@@ -305,3 +305,461 @@ QTableWidget
 8. 增加设备报警与日志功能
 
 当前阶段优先保持现有基础架构稳定，不提前实现后续模块。
+
+
+## Day 2
+
+**日期：2026-09-14**
+
+---
+
+## 一、开发目标
+
+在第一天完成设备数据模拟、设备管理以及主界面设备总览的基础上，实现设备详情查看功能。
+
+主要目标：
+
+- 创建 DeviceWidget 设备详情组件
+- 实现从设备总览进入设备详情
+- 实现设备数据实时同步显示
+- 完善设备详情窗口生命周期管理
+
+---
+
+# 二、完成内容
+
+## 1. 增加 DeviceManager 设备查询功能
+
+新增接口：
+
+```cpp
+Device* getDevice(int deviceId);
+```
+
+用于根据设备 ID 获取对应的 Device 对象。
+
+实现逻辑：
+
+```text
+输入设备ID
+    ↓
+遍历 DeviceManager 管理的设备列表
+    ↓
+匹配 Device.id()
+    ↓
+返回对应 Device 指针
+```
+
+如果未找到设备：
+
+```cpp
+return nullptr;
+```
+
+该接口为后续通过 UI 操作指定设备提供基础。
+
+---
+
+## 2. 创建并完善 DeviceWidget 设备详情组件
+
+新增设备详情窗口：
+
+```text
+DeviceWidget
+```
+
+用于显示单个设备的详细信息。
+
+显示内容：
+
+- 设备编号
+- 在线状态
+- 温度
+- 电压
+
+界面示例：
+
+```text
+----------------------
+设备编号：1
+
+状态：在线
+
+温度：35.2 ℃
+
+电压：24.1 V
+----------------------
+```
+
+---
+
+## 3. 实现 DeviceWidget 与 Device 数据绑定
+
+DeviceWidget 内部保存：
+
+```cpp
+Device* m_device;
+```
+
+表示一个 DeviceWidget 对应一个 Device。
+
+数据更新流程：
+
+```text
+Device
+  |
+  | dataUpdated(DeviceData)
+  ↓
+DeviceWidget
+  |
+  ↓
+updateWidget()
+  |
+  ↓
+刷新界面
+```
+
+实现效果：
+
+- Device 负责数据和业务逻辑
+- DeviceWidget 负责数据显示
+- UI 不直接修改设备数据
+
+实现了业务层和显示层分离。
+
+---
+
+## 4. 实现 MainWindow 双击打开设备详情
+
+在 MainWindow 中增加设备表格双击事件：
+
+```cpp
+on_deviceTable_cellDoubleClicked()
+```
+
+实现流程：
+
+```text
+用户双击设备
+        ↓
+获取设备所在行
+        ↓
+转换为设备ID
+        ↓
+DeviceManager::getDevice()
+        ↓
+获取 Device 对象
+        ↓
+创建 DeviceWidget
+        ↓
+显示详情窗口
+```
+
+实现：
+
+```text
+设备总览界面
+
+        ↓ 双击
+
+对应设备详情窗口
+```
+
+---
+
+## 5. 实现设备详情窗口唯一管理
+
+### 遇到问题
+
+重复双击同一个设备会创建多个详情窗口：
+
+```text
+Device 1
+
+第一次点击
+    ↓
+DeviceWidget1
+
+
+第二次点击
+    ↓
+DeviceWidget2
+```
+
+产生多个相同设备窗口。
+
+---
+
+### 解决方案
+
+使用：
+
+```cpp
+QMap<int, DeviceWidget*> m_deviceWidgets;
+```
+
+保存已经打开的设备窗口。
+
+数据结构：
+
+```text
+设备ID        DeviceWidget
+
+1        →    DeviceWidget1
+
+2        →    DeviceWidget2
+
+3        →    DeviceWidget3
+```
+
+打开设备详情前：
+
+```cpp
+m_deviceWidgets.contains(deviceId)
+```
+
+判断窗口是否已经存在。
+
+如果存在：
+
+- 不重新创建
+- 激活已有窗口
+
+---
+
+## 6. 解决关闭窗口后无法重新打开问题
+
+### 问题
+
+关闭设备详情窗口后：
+
+```text
+DeviceWidget 已经关闭
+
+但是：
+
+QMap 中仍保存旧指针
+```
+
+导致：
+
+再次打开时：
+
+```cpp
+contains(deviceId)
+```
+
+仍然返回 true。
+
+程序认为窗口存在，但实际上窗口已经销毁。
+
+---
+
+### 解决方案
+
+设置窗口关闭自动销毁：
+
+```cpp
+setAttribute(Qt::WA_DeleteOnClose);
+```
+
+监听对象销毁信号：
+
+```cpp
+QObject::destroyed
+```
+
+窗口销毁时：
+
+```cpp
+m_deviceWidgets.remove(deviceId);
+```
+
+完整生命周期：
+
+```text
+创建 DeviceWidget
+
+        ↓
+
+加入 QMap 管理
+
+        ↓
+
+用户关闭窗口
+
+        ↓
+
+对象销毁
+
+        ↓
+
+触发 destroyed 信号
+
+        ↓
+
+移除 QMap 中记录
+
+        ↓
+
+可以重新创建窗口
+```
+
+---
+
+# 三、遇到的问题及解决
+
+## 问题1：重复打开设备详情窗口
+
+### 原因
+
+没有记录已经打开的窗口。
+
+### 解决
+
+使用：
+
+```cpp
+QMap<int, DeviceWidget*>
+```
+
+建立：
+
+```text
+设备ID → 窗口对象
+```
+
+映射关系。
+
+---
+
+## 问题2：关闭窗口后无法重新打开
+
+### 原因
+
+窗口销毁后，管理列表仍保存旧指针。
+
+### 解决
+
+使用：
+
+```cpp
+Qt::WA_DeleteOnClose
+```
+
+配合：
+
+```cpp
+destroyed
+```
+
+信号。
+
+关闭窗口时自动清理记录。
+
+---
+
+# 四、当前项目架构
+
+当前结构：
+
+```text
+MainWindow
+
+    |
+    |
+    | 设备总览
+    |
+    ↓
+
+DeviceManager
+
+    |
+    |
+    ├── Device 1
+    │       |
+    │       ↓
+    │   DeviceWidget 1
+    |
+    |
+    ├── Device 2
+    │       |
+    │       ↓
+    │   DeviceWidget 2
+    |
+    |
+    └── Device 3
+            |
+            ↓
+        DeviceWidget 3
+```
+
+数据流：
+
+```text
+Device
+
+ ↓ dataUpdated
+
+DeviceWidget
+
+ ↓
+
+界面刷新
+```
+
+---
+
+# 五、今日学习内容
+
+- Qt QWidget 子窗口管理
+- Qt 信号槽跨对象通信
+- QObject 生命周期管理
+- destroyed 信号使用
+- Qt::WA_DeleteOnClose 属性
+- QMap 对象映射管理
+- Lambda 捕获机制
+
+---
+
+# 六、当前完成度
+
+已完成：
+
+✅ 多设备模拟管理
+
+✅ 主界面设备总览
+
+✅ 设备详情窗口
+
+✅ Device 与 DeviceWidget 数据同步
+
+✅ 双击打开设备详情
+
+✅ 详情窗口唯一管理
+
+✅ 窗口生命周期管理
+
+
+未完成：
+
+- 设备启动/停止控制
+- SQLite 数据存储
+- 历史数据查询
+- 串口通信
+- 多线程数据采集
+- 报警系统
+
+---
+
+# 七、下一步计划
+
+## Day 3
+
+计划实现：
+
+1. DeviceWidget 增加设备控制按钮
+2. 实现启动/停止设备功能
+3. 完善设备状态变化逻辑
+4. 引入 SQLite 数据库存储设备数据
+5. 实现历史数据查询功能

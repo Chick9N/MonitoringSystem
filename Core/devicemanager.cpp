@@ -20,6 +20,15 @@ void DeviceManager::addDevice(Device *device){
             });
 }
 
+Device* DeviceManager::getDevice(int deviceId){
+    if(deviceId == -1) return nullptr;
+    for(Device* device:m_devices){
+        if(device->id() == deviceId)
+            return device;
+    }
+    return nullptr;
+}
+
 QList<Device*> DeviceManager::devices() const{
     return m_devices;
 }

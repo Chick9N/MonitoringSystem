@@ -11,6 +11,7 @@ class DeviceManager : public QObject
 public:
     explicit DeviceManager(QObject *parent = nullptr);
     void addDevice(Device *device);
+    Device* getDevice(int deviceId);
     QList<Device*> devices() const;
 
     void startAll();

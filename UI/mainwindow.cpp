@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <qtablewidget.h>
+#include "../UI/devicewidget.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -91,3 +92,33 @@ void MainWindow::on_stopAllBtn_clicked()
     deviceManager->stopAll();
 }
 
+void MainWindow::on_deviceTable_cellDoubleClicked(int row, int column)
+{
+    Q_UNUSED(column);
+
+    int deviceId = row + 1;
+
+    Device *device = deviceManager->getDevice(deviceId);
+
+    if (!device)
+        return;
+
+    if(m_deviceWidgets.contains(deviceId)){
+        m_deviceWidgets[deviceId]->raise(); // 把窗口提到其他窗口前面
+        m_deviceWidgets[deviceId]->activateWindow(); // 让这个窗口成为当前活动窗口
+        return;
+    }
+
+    DeviceWidget *widget = new DeviceWidget(device);
+
+    m_deviceWidgets[deviceId] = widget;
+
+    // 窗口关闭时从已打开窗口管理表(QMap)中移除
+    connect(widget,
+            &QObject::destroyed,
+            [this,deviceId](){
+                m_deviceWidgets.remove(deviceId);
+            });
+
+    widget->show();
+}
