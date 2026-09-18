@@ -763,3 +763,389 @@ DeviceWidget
 3. 完善设备状态变化逻辑
 4. 引入 SQLite 数据库存储设备数据
 5. 实现历史数据查询功能
+
+
+
+## Day 3 —— SQLite 数据持久化与数据库业务层
+
+### 一、今日开发目标
+
+完成设备监控上位机系统的 SQLite 数据层，实现设备运行数据的持久化存储，并建立基本的历史数据查询与管理能力。
+
+今日主要工作：
+
+- 集成 SQLite 数据库
+- 完成数据库连接与数据表创建
+- 实现设备运行数据持久化
+- 实现设备历史数据查询
+- 实现指定时间范围历史数据查询
+- 实现最新设备数据查询
+- 实现设备历史数据删除
+- 完善数据库索引
+- 打通设备实时数据到 SQLite 的数据链路
+- 对数据库读写功能进行基本验证
+
+---
+
+## 二、SQLite 数据库集成
+
+项目使用 Qt SQL 模块连接 SQLite 数据库。
+
+数据库文件：
+
+```text
+device.db
+```
+
+数据库采用 SQLite，无需额外部署数据库服务器，适合当前设备监控上位机的单机应用场景。
+
+数据库连接通过 `QSqlDatabase` 完成：
+
+```cpp
+m_database = QSqlDatabase::addDatabase("QSQLITE");
+m_database.setDatabaseName("device.db");
+```
+
+数据库成功打开后创建系统所需的数据表。
+
+---
+
+## 三、设备历史数据表设计
+
+建立 `device_history` 表，用于保存设备运行过程中产生的历史监测数据。
+
+表结构如下：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | INTEGER | 历史数据记录编号，主键 |
+| device_id | INTEGER | 设备编号 |
+| temperature | REAL | 设备温度 |
+| voltage | REAL | 设备电压 |
+| online | INTEGER | 设备在线状态 |
+| timestamp | DATETIME | 数据采集时间 |
+
+数据模型：
+
+```text
+device_history
+│
+├── id
+├── device_id
+├── temperature
+├── voltage
+├── online
+└── timestamp
+```
+
+其中 `device_id + timestamp` 构成历史数据查询中的主要检索条件。
+
+---
+
+## 四、实现设备数据插入
+
+在 `DatabaseManager` 中增加 `insertDeviceData()` 接口。
+
+设备产生新的监测数据后，将：
+
+- 设备编号
+- 温度
+- 电压
+- 在线状态
+- 当前时间
+
+写入 SQLite 数据库。
+
+采用参数绑定方式执行 SQL：
+
+```cpp
+query.prepare(...);
+
+query.bindValue(":device_id", deviceId);
+query.bindValue(":temperature", data.temperature);
+query.bindValue(":voltage", data.voltage);
+query.bindValue(":online", data.isOnline);
+query.bindValue(":timestamp", QDateTime::currentDateTime());
+
+query.exec();
+```
+
+相比直接拼接 SQL 字符串，参数绑定能够使 SQL 执行更加规范，同时避免数据内容直接参与 SQL 字符串构造。
+
+---
+
+## 五、实现历史数据查询
+
+增加：
+
+```cpp
+QList<DeviceHistory> queryDeviceHistory(int deviceId);
+```
+
+用于查询指定设备的全部历史监测数据。
+
+查询结果按照时间升序排列：
+
+```sql
+WHERE device_id = :device_id
+ORDER BY timestamp ASC
+```
+
+查询结果被转换为 `DeviceHistory` 对象，并通过 `QList<DeviceHistory>` 返回。
+
+形成：
+
+```text
+SQLite
+  ↓
+QSqlQuery
+  ↓
+DeviceHistory
+  ↓
+QList<DeviceHistory>
+```
+
+为后续历史数据显示和曲线绘制提供数据基础。
+
+---
+
+## 六、实现时间范围查询
+
+增加带时间范围的历史数据查询接口：
+
+```cpp
+QList<DeviceHistory> queryDeviceHistory(
+    int deviceId,
+    const QDateTime &startTime,
+    const QDateTime &endTime);
+```
+
+可以根据：
+
+- 设备编号
+- 开始时间
+- 结束时间
+
+查询指定时间范围内的设备历史数据。
+
+该接口主要为后续历史数据查询界面以及历史趋势曲线功能提供数据支持。
+
+---
+
+## 七、实现最新数据查询
+
+增加：
+
+```cpp
+DeviceHistory queryLatestDeviceData(int deviceId);
+```
+
+通过：
+
+```sql
+ORDER BY timestamp DESC
+LIMIT 1
+```
+
+获取指定设备最近的一条历史记录。
+
+该接口可以用于：
+
+- 获取设备最近一次状态
+- 页面初始化时加载最新数据
+- 后续设备状态恢复
+
+---
+
+## 八、实现历史数据删除
+
+增加：
+
+```cpp
+bool deleteDeviceHistory(int deviceId);
+```
+
+用于删除指定设备的全部历史记录。
+
+采用：
+
+```sql
+DELETE FROM device_history
+WHERE device_id = :device_id
+```
+
+实现设备历史数据清理功能。
+
+---
+
+## 九、增加数据库索引
+
+针对系统主要的历史数据查询方式：
+
+```sql
+WHERE device_id = ?
+ORDER BY timestamp
+```
+
+建立联合索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS
+idx_device_history_device_time
+ON device_history(device_id, timestamp);
+```
+
+使数据库能够针对设备编号和时间进行更有效的检索。
+
+---
+
+## 十、打通实时数据持久化链路
+
+将 `DeviceManager` 的设备数据更新信号与 `DatabaseManager` 连接。
+
+数据流变为：
+
+```text
+QTimer
+   ↓
+DeviceManager
+   ↓
+Device::updateData()
+   ↓
+DeviceData
+   ↓
+DeviceManager::deviceDataUpdated()
+   ├──────────────→ MainWindow
+   │                    ↓
+   │                 实时数据显示
+   │
+   └──────────────→ DatabaseManager
+                        ↓
+                      SQLite
+                        ↓
+                 device_history
+```
+
+至此，系统中的设备模拟数据不再只存在于内存中，而是能够持续保存到本地数据库。
+
+---
+
+## 十一、事务设计分析
+
+本阶段暂未对单条设备数据 INSERT 强制使用显式事务。
+
+原因是当前一次设备数据更新对应一条独立的数据库写操作：
+
+```text
+一次数据采集
+    ↓
+一次 INSERT
+```
+
+不存在需要保证“多个 SQL 操作全部成功或全部失败”的复杂业务操作。
+
+因此当前阶段不需要为了使用事务而使用事务。
+
+后续如果出现以下业务：
+
+```text
+删除设备
+    ↓
+删除设备信息
+    ↓
+删除历史数据
+    ↓
+删除报警记录
+    ↓
+更新其他关联数据
+```
+
+或者进行大量历史数据批量写入时，再引入显式事务。
+
+---
+
+## 十二、今日测试
+
+对数据库功能进行了基本验证：
+
+### 1. 数据库连接
+
+确认程序能够正常创建并打开：
+
+```text
+device.db
+```
+
+### 2. 数据表
+
+确认：
+
+```text
+device_history
+```
+
+能够正常创建。
+
+### 3. 数据写入
+
+程序运行后，设备监测数据能够持续写入数据库。
+
+### 4. 数据查询
+
+验证指定设备历史数据和最新数据能够正常读取。
+
+### 5. 时间范围查询
+
+验证能够根据开始时间和结束时间查询对应历史记录。
+
+### 6. 数据删除
+
+验证指定设备历史数据能够正常删除。
+
+---
+
+## 十三、今日成果
+
+Day3 完成后，项目已经具备基础的数据持久化能力：
+
+```text
+┌──────────────┐
+│    Device    │
+└──────┬───────┘
+       │
+       ↓
+┌──────────────┐
+│DeviceManager │
+└──────┬───────┘
+       │
+       ↓
+┌──────────────────┐
+│ DatabaseManager  │
+└────────┬─────────┘
+         │
+         ↓
+┌──────────────────┐
+│     SQLite       │
+│ device_history   │
+└──────────────────┘
+```
+
+系统目前已经能够完成：
+
+> **设备数据产生 → 实时显示 → 数据持久化 → 历史数据查询**
+
+为后续历史数据界面和数据可视化功能提供了完整的数据基础。
+
+---
+
+## 十四、下一步开发计划
+
+下一阶段进入历史数据可视化功能：
+
+1. 在设备详情界面增加历史数据查看功能
+2. 显示历史温度、电压数据
+3. 集成 Qt Charts
+4. 绘制温度变化曲线
+5. 绘制电压变化曲线
+6. 增加时间范围筛选
+7. 完成历史数据与实时监控之间的界面衔接

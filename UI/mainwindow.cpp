@@ -7,6 +7,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , deviceManager(new DeviceManager(this))
+    , databaseManager(new DatabaseManager(this))
     , timer(new QTimer(this))
 {
     ui->setupUi(this);
@@ -33,6 +34,18 @@ MainWindow::MainWindow(QWidget *parent)
             &DeviceManager::updateAllDevices);
 
     timer->start(1000);
+
+    // 数据库
+    databaseManager->openDatabase();
+    databaseManager->createTables();
+
+    connect(deviceManager,
+            &DeviceManager::deviceDataUpdated,
+            this,
+            [this](int deviceId, const DeviceData &data){
+                databaseManager->insertDeviceData(deviceId,data);
+            }
+            );
 }
 
 void MainWindow::updateDeviceUI(int deviceId,const DeviceData &data){
