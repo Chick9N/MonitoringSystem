@@ -1,12 +1,16 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QMainWindow>
+
 #include "../Core/devicemanager.h"
+#include "../Data/databasemanager.h"
 #include "devicewidget.h"
+
 #include <QTimer>
 #include <QMap>
-#include "../Data/databasemanager.h"
+#include <QList>
+#include <QMainWindow>
+
 
 namespace Ui {
 class MainWindow;
@@ -26,6 +30,9 @@ private:
     DatabaseManager *databaseManager;
     QTimer *timer;
     QMap<int, DeviceWidget*> m_deviceWidgets; // 判断某个设备有没有已经打开的详情窗口
+    QMap<int, QList<double>> m_temperatureHistory;
+    QMap<int, QList<double>> m_voltageHistory;
+    static constexpr int MaxHistoryPoints = 30;
 
 private slots:
     void updateDeviceUI(int deviceId,const DeviceData &data);

@@ -122,7 +122,6 @@ bool DatabaseManager::insertDeviceData(int deviceId, const DeviceData &data){
         return false;
     }
 
-    qDebug() << "设备数据插入成功";
     return true;
 }
 

@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>442</width>
+    <width>579</width>
     <height>498</height>
    </rect>
   </property>
@@ -54,7 +54,7 @@
       </column>
       <column>
        <property name="text">
-        <string>新建列</string>
+        <string>状态</string>
        </property>
       </column>
       <column>
@@ -67,6 +67,11 @@
         <string>电压</string>
        </property>
       </column>
+      <column>
+       <property name="text">
+        <string>温度走势图</string>
+       </property>
+      </column>
      </widget>
     </item>
    </layout>
@@ -76,7 +81,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>442</width>
+     <width>579</width>
      <height>21</height>
     </rect>
    </property>

@@ -1149,3 +1149,384 @@ Day3 完成后，项目已经具备基础的数据持久化能力：
 5. 绘制电压变化曲线
 6. 增加时间范围筛选
 7. 完成历史数据与实时监控之间的界面衔接
+
+# Day4 开发日志
+
+## 一、开发日期
+
+2026-09-19
+
+## 二、今日开发目标
+
+在已有设备监控、设备详情和 SQLite 数据持久化功能的基础上，引入 Qt Charts，实现设备温度、电压数据的图形化展示，并逐步建立实时监控与历史数据展示的可视化基础。
+
+今日重点完成：
+
+1. 主窗口设备列表增加温度、电压趋势图。
+2. 封装 `MiniChartWidget`，实现可复用的迷你折线图组件。
+3. 将设备电压模拟数据调整至实际设备常见的 220V 附近。
+4. 设备详情窗口增加温度、电压详细趋势图。
+5. 调整设备详情窗口的数据展示方案，将其暂时定位为实时详细监控窗口。
+6. 处理 Qt Charts 与 Qt Designer 布局冲突问题。
+
+---
+
+## 三、主要开发内容
+
+### 3.1 主窗口增加实时趋势图
+
+在原有设备监控表格的基础上，将表格列由原来的 4 列扩展为 6 列：
+
+| 列 | 内容 |
+|---|---|
+| 1 | 设备ID |
+| 2 | 状态 |
+| 3 | 温度 |
+| 4 | 电压 |
+| 5 | 温度走势图 |
+| 6 | 电压走势图 |
+
+每台设备对应两个迷你折线图，用于显示最近一段时间内的温度和电压变化趋势。
+
+为了避免频繁查询 SQLite，在主窗口中采用内存缓存保存最近的数据：
+
+```cpp
+QMap<int, QList<double>> m_temperatureHistory;
+QMap<int, QList<double>> m_voltageHistory;
+```
+
+并设置最大保存点数：
+
+```cpp
+static constexpr int MaxHistoryPoints = 30;
+```
+
+由于当前设备数据每秒更新一次，因此每台设备的迷你图大约显示最近 30 秒的数据。
+
+---
+
+### 3.2 封装 MiniChartWidget
+
+为了避免在 `MainWindow` 中重复编写 Qt Charts 代码，将迷你折线图封装为独立组件：
+
+```cpp
+enum class ChartType
+{
+    Temperature,
+    Voltage
+};
+```
+
+`MiniChartWidget` 根据图表类型分别负责：
+
+- 创建 `QChart`
+- 创建 `QLineSeries`
+- 创建 X/Y 轴
+- 设置坐标轴范围
+- 接收外部数据
+- 更新折线图
+
+主窗口只需要调用：
+
+```cpp
+chart->setData(...);
+```
+
+即可完成图表更新。
+
+这种方式降低了 `MainWindow` 与具体图表实现之间的耦合，也方便后续继续增加其他类型的数据图表。
+
+---
+
+### 3.3 调整电压模拟数据
+
+之前模拟设备电压的数据范围较低，不符合当前设备监控系统的实际表现。
+
+将电压模拟值调整为 220V 附近：
+
+```cpp
+m_data.voltage =
+    220.0 +
+    (QRandomGenerator::global()->generateDouble() - 0.5) * 10.0;
+```
+
+因此模拟电压大约处于：
+
+```text
+215V ~ 225V
+```
+
+同时将设备初始电压调整为：
+
+```cpp
+m_data.voltage = 220.0;
+```
+
+对应的电压趋势图 Y 轴调整为：
+
+```cpp
+m_voltageAxisY->setRange(210, 230);
+```
+
+使图表显示范围更加合理。
+
+---
+
+### 3.4 优化迷你图坐标轴显示
+
+对 Qt Charts 的坐标轴进行了进一步调整。
+
+X 轴使用 `QValueAxis` 时，默认数据类型为浮点数，因此显示的刻度可能带有小数。
+
+通过：
+
+```cpp
+m_axisX->setLabelFormat("%.0f");
+```
+
+将其调整为整数显示。
+
+同时考虑到主窗口表格中的空间有限，图表中的单位不再单独占用过多空间，而是通过图表标题表达，例如：
+
+```text
+温度 (°C)
+电压 (V)
+```
+
+并对表格中的图表列使用 `Stretch`，使图表能够随窗口大小进行弹性调整。
+
+---
+
+## 四、设备详情窗口图表
+
+在 `DeviceWidget` 中增加了更加详细的温度和电压趋势图。
+
+与主窗口的迷你图不同，设备详情窗口使用：
+
+- `QLineSeries`
+- `QDateTimeAxis`
+- `QValueAxis`
+- `QChartView`
+
+其中 X 轴使用实际时间：
+
+```text
+HH:mm:ss
+```
+
+因此可以直接观察设备数据随时间的变化。
+
+详情窗口包含：
+
+```text
+设备当前状态
+        ↓
+当前温度
+        ↓
+当前电压
+        ↓
+温度实时趋势图
+        ↓
+电压实时趋势图
+```
+
+---
+
+## 五、解决 Qt Designer 布局冲突
+
+在将图表添加到 `DeviceWidget` 时出现了 Qt 警告：
+
+```text
+QLayout: Attempting to add QLayout "" to QWidget "temperatureChartWidget", which already has a layout
+
+QLayout: Attempting to add QLayout "" to QWidget "voltageChartWidget", which already has a layout
+```
+
+经分析发现：
+
+`temperatureChartWidget` 和 `voltageChartWidget` 已经在 Qt Designer 中设置了布局。
+
+因此代码中再次执行：
+
+```cpp
+new QVBoxLayout(ui->temperatureChartWidget);
+```
+
+属于重复创建布局。
+
+最终改为直接使用 Designer 已经创建的布局：
+
+```cpp
+ui->temperatureChartWidget->layout()->addWidget(
+    m_temperatureChartView
+);
+
+ui->voltageChartWidget->layout()->addWidget(
+    m_voltageChartView
+);
+```
+
+从而消除了布局冲突。
+
+---
+
+## 六、实时数据与历史数据的职责划分
+
+今日开发过程中进一步明确了实时监控与历史数据的职责。
+
+当前系统采用：
+
+```text
+Device
+  │
+  │ dataUpdated
+  ↓
+DeviceManager
+  │
+  ├──────────────→ MainWindow
+  │                   └→ 实时迷你图
+  │
+  ├──────────────→ DeviceWidget
+  │                   └→ 实时详细图
+  │
+  └──────────────→ DatabaseManager
+                      └→ SQLite 持久化
+```
+
+其中：
+
+### 实时显示
+
+直接使用：
+
+```cpp
+Device::dataUpdated
+```
+
+传递的数据进行图表更新。
+
+### 数据持久化
+
+由：
+
+```cpp
+DatabaseManager
+```
+
+将设备数据写入 SQLite。
+
+### 历史数据
+
+SQLite 中已经保存完整历史数据，但当前阶段暂不直接用于实时详细图。
+
+原因是如果每次刷新图表都从数据库读取历史数据，会让实时显示逻辑和历史查询逻辑产生较强耦合。
+
+因此当前先完成：
+
+> 实时详细监控窗口
+
+后续再独立实现：
+
+> 历史数据查询与历史趋势分析
+
+---
+
+## 七、当前 DeviceWidget 数据流
+
+当前设备详情窗口的实时数据流程为：
+
+```text
+Device::updateData()
+        │
+        ↓
+emit dataUpdated()
+        │
+        ├──────────────→ updateWidget()
+        │                      │
+        │                      ├→ 更新状态
+        │                      ├→ 更新温度
+        │                      ├→ 更新电压
+        │                      │
+        │                      └→ updateCharts()
+        │
+        └──────────────→ DatabaseManager
+                               │
+                               ↓
+                            SQLite
+```
+
+图表只保留最近一定数量的数据点，从而避免程序运行时间过长后图表数据无限增长。
+
+---
+
+## 八、今日遇到的问题
+
+### 问题 1：启动设备后图表崩溃
+
+初版 Qt Charts 实现中，图表坐标轴及数据更新逻辑存在初始化问题。
+
+经过调整，将坐标轴创建、添加以及 Series 与 Axis 的绑定关系明确化，最终解决了启动设备后图表更新导致的崩溃问题。
+
+### 问题 2：Qt Designer 布局重复创建
+
+发现 `temperatureChartWidget` 和 `voltageChartWidget` 已经存在布局，代码中再次创建布局产生 Qt 警告。
+
+最终改为直接使用 Designer 中已有的布局。
+
+### 问题 3：设备详情图表无法实时更新
+
+最初详情窗口只在打开时执行一次：
+
+```cpp
+loadHistory();
+```
+
+因此只能读取打开窗口时已经存在的 SQLite 历史数据，之后产生的新数据不会自动进入图表。
+
+经过分析，将设备详情窗口当前阶段调整为实时监控模式，通过 `Device::dataUpdated` 直接更新图表。
+
+历史数据查询功能暂时保留在数据层，后续单独设计历史数据查看功能。
+
+---
+
+## 九、今日开发结果
+
+今日完成 Qt Charts 第一阶段集成，当前系统已经具备：
+
+- 设备实时温度显示
+- 设备实时电压显示
+- 主窗口温度迷你趋势图
+- 主窗口电压迷你趋势图
+- 设备详情温度趋势图
+- 设备详情电压趋势图
+- 实时数据与 SQLite 持久化并行工作
+- 220V 附近的电压模拟数据
+- 图表组件初步封装
+- 图表窗口弹性布局
+
+当前系统已经从单纯的：
+
+> “实时数值监控”
+
+进一步发展为：
+
+> “实时数值 + 实时趋势图 + 数据持久化”
+
+---
+
+## 十、下一步计划
+
+下一阶段可以在当前实时监控功能稳定后继续完善：
+
+1. 完善设备详情实时图表的坐标轴动态范围。
+2. 增加实时图表最大数据点限制。
+3. 增加历史数据查询功能。
+4. 增加时间范围选择，例如：
+   - 最近 1 分钟
+   - 最近 10 分钟
+   - 最近 1 小时
+   - 自定义时间范围
+5. 将 SQLite 历史数据加载到独立的历史趋势界面。
+6. 后续再进入串口通信 / Modbus 等真实设备通信模块。
+
+当前阶段暂不引入串口和多线程，优先保证现有数据链路和图表功能稳定。

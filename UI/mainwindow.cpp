@@ -1,7 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include <qtablewidget.h>
 #include "../UI/devicewidget.h"
+#include <qtablewidget.h>
+#include "minichartwidget.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -12,8 +13,45 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     ui->deviceTable->setRowCount(3);
-    ui->deviceTable->setColumnCount(4);
-    ui->deviceTable->setHorizontalHeaderLabels({"设备ID","状态","温度","电压"});
+    ui->deviceTable->setColumnCount(6);
+    ui->deviceTable->horizontalHeader()->setSectionResizeMode(
+        4, QHeaderView::Stretch);
+    ui->deviceTable->setHorizontalHeaderLabels({"设备ID","状态","温度","电压","温度走势图","电压走势图"});
+    ui->deviceTable->horizontalHeader()
+        ->setSectionResizeMode(
+            0,
+            QHeaderView::ResizeToContents
+            );
+
+    ui->deviceTable->horizontalHeader()
+        ->setSectionResizeMode(
+            1,
+            QHeaderView::ResizeToContents
+            );
+
+    ui->deviceTable->horizontalHeader()
+        ->setSectionResizeMode(
+            2,
+            QHeaderView::ResizeToContents
+            );
+
+    ui->deviceTable->horizontalHeader()
+        ->setSectionResizeMode(
+            3,
+            QHeaderView::ResizeToContents
+            );
+
+    ui->deviceTable->horizontalHeader()
+        ->setSectionResizeMode(
+            4,
+            QHeaderView::Stretch
+            );
+
+    ui->deviceTable->horizontalHeader()
+        ->setSectionResizeMode(
+            5,
+            QHeaderView::Stretch
+            );
 
     Device *device1 = new Device(1,this);
     Device *device2 = new Device(2,this);
@@ -48,46 +86,123 @@ MainWindow::MainWindow(QWidget *parent)
             );
 }
 
-void MainWindow::updateDeviceUI(int deviceId,const DeviceData &data){
-    int row = deviceId-1;
+void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
+{
+    int row = deviceId - 1;
+
+    ui->deviceTable->setRowHeight(row, 120);
+
     ui->deviceTable->setItem(
-        row,0,
-        new QTableWidgetItem(
-            QString::number(deviceId))
+        row, 0,
+        new QTableWidgetItem(QString::number(deviceId))
         );
 
     ui->deviceTable->setItem(
-        row,1,
+        row, 1,
         new QTableWidgetItem(
-            data.isOnline ? "在线":"离线")
+            data.isOnline ? "在线" : "离线"
+            )
         );
 
-    if(data.isOnline){
-        ui->deviceTable->setItem(
-            row,2,
-            new QTableWidgetItem(
-                QString::number(data.temperature,'f',1))
+    MiniChartWidget *temperatureChart =
+        qobject_cast<MiniChartWidget*>(
+            ui->deviceTable->cellWidget(row, 4)
             );
 
-        ui->deviceTable->setItem(
-            row,3,
-            new QTableWidgetItem(
-                QString::number(data.voltage,'f',1))
-            );
-    }else{
-        ui->deviceTable->setItem(
-            row,2,
-            new QTableWidgetItem("--")
-            );
+    if (!temperatureChart)
+    {
+        temperatureChart =
+            new MiniChartWidget(
+                ChartType::Temperature
+                );
 
-        ui->deviceTable->setItem(
-            row,3,
-            new QTableWidgetItem("--")
+        ui->deviceTable->setCellWidget(
+            row,
+            4,
+            temperatureChart
             );
     }
 
+    MiniChartWidget *voltageChart =
+        qobject_cast<MiniChartWidget*>(
+            ui->deviceTable->cellWidget(row, 5)
+            );
 
+    if (!voltageChart)
+    {
+        voltageChart =
+            new MiniChartWidget(
+                ChartType::Voltage
+                );
+
+        ui->deviceTable->setCellWidget(
+            row,
+            5,
+            voltageChart
+            );
+    }
+
+    if (data.isOnline)
+    {
+        ui->deviceTable->setItem(
+            row, 2,
+            new QTableWidgetItem(
+                QString::number(data.temperature, 'f', 1)
+                )
+            );
+
+        ui->deviceTable->setItem(
+            row, 3,
+            new QTableWidgetItem(
+                QString::number(data.voltage, 'f', 1)
+                )
+            );
+
+        // 保存历史数据
+        m_temperatureHistory[deviceId].append(
+            data.temperature
+            );
+
+        m_voltageHistory[deviceId].append(
+            data.voltage
+            );
+
+        // 限制长度
+        if (m_temperatureHistory[deviceId].size()
+            > MaxHistoryPoints)
+        {
+            m_temperatureHistory[deviceId].removeFirst();
+        }
+
+        if (m_voltageHistory[deviceId].size()
+            > MaxHistoryPoints)
+        {
+            m_voltageHistory[deviceId].removeFirst();
+        }
+
+        // 更新小图
+        temperatureChart->setData(
+            m_temperatureHistory[deviceId]
+            );
+
+        voltageChart->setData(
+            m_voltageHistory[deviceId]
+            );
+    }
+    else
+    {
+        ui->deviceTable->setItem(
+            row, 2,
+            new QTableWidgetItem("--")
+            );
+
+        ui->deviceTable->setItem(
+            row, 3,
+            new QTableWidgetItem("--")
+            );
+    }
 }
+
 
 MainWindow::~MainWindow()
 {
@@ -122,7 +237,7 @@ void MainWindow::on_deviceTable_cellDoubleClicked(int row, int column)
         return;
     }
 
-    DeviceWidget *widget = new DeviceWidget(device);
+    DeviceWidget *widget = new DeviceWidget(device, databaseManager, this); // 挂到父窗口下, 否则mainwindow销毁widget不销毁
 
     m_deviceWidgets[deviceId] = widget;
 
