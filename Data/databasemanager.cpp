@@ -171,7 +171,10 @@ QList<DeviceHistory> DatabaseManager::queryDeviceHistory(int deviceId)
             query.value("online").toBool();
 
         history.timestamp =
-            query.value("timestamp").toDateTime();
+            QDateTime::fromString(
+                query.value("timestamp").toString(),
+                "yyyy-MM-dd HH:mm:ss"
+                );
 
         historyList.append(history);
     }
@@ -204,8 +207,8 @@ QList<DeviceHistory> DatabaseManager::queryDeviceHistory(
     )");
 
     query.bindValue(":device_id", deviceId);
-    query.bindValue(":start_time", startTime);
-    query.bindValue(":end_time", endTime);
+    query.bindValue(":start_time", startTime.toString("yyyy-MM-dd HH:mm:ss"));
+    query.bindValue(":end_time", endTime.toString("yyyy-MM-dd HH:mm:ss"));
 
     if (!query.exec())
     {
@@ -232,7 +235,10 @@ QList<DeviceHistory> DatabaseManager::queryDeviceHistory(
             query.value("online").toBool();
 
         history.timestamp =
-            query.value("timestamp").toDateTime();
+            QDateTime::fromString(
+                query.value("timestamp").toString(),
+                "yyyy-MM-dd HH:mm:ss"
+                );
 
         historyList.append(history);
     }
@@ -285,7 +291,10 @@ DeviceHistory DatabaseManager::queryLatestDeviceData(int deviceId)
             query.value("online").toBool();
 
         history.timestamp =
-            query.value("timestamp").toDateTime();
+            QDateTime::fromString(
+                query.value("timestamp").toString(),
+                "yyyy-MM-dd HH:mm:ss"
+                );
     }
 
     return history;

@@ -8,8 +8,8 @@ namespace Ui {
 class DeviceWidget;
 }
 
-class QChartView;
 class QLineSeries;
+class QChartView;
 class QValueAxis;
 class QDateTimeAxis;
 
@@ -27,10 +27,18 @@ private slots:
     void on_startBtn_clicked();
     void on_stopBtn_clicked();
 
+
+    void on_queryHistoryButton_clicked();
+
 private:
     void setupCharts();
     void loadHistory();
     void updateCharts(const DeviceData &data);
+    void setupHistoryCharts();
+    void updateHistoryCharts(const QList<DeviceHistory> &history);
+    QList<DeviceHistory> sampleHistory(
+        const QList<DeviceHistory> &history,
+        int maxPoints);
     Ui::DeviceWidget *ui;
     Device *m_device;
     DatabaseManager *m_databaseManager;
@@ -45,6 +53,18 @@ private:
 
     QLineSeries *m_temperatureSeries;
     QLineSeries *m_voltageSeries;
+
+    QLineSeries *m_historyTemperatureSeries;
+    QLineSeries *m_historyVoltageSeries;
+
+    QChartView *m_historyTemperatureChartView;
+    QChartView *m_historyVoltageChartView;
+
+    QDateTimeAxis *m_historyTemperatureAxisX;
+    QDateTimeAxis *m_historyVoltageAxisX;
+
+    QValueAxis *m_historyTemperatureAxisY;
+    QValueAxis *m_historyVoltageAxisY;
 };
 
 #endif // DEVICEWIDGET_H
