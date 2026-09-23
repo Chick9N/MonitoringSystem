@@ -27,7 +27,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
 
         Core/devicemanager.h Core/devicemanager.cpp
         Communication/serialport.h Communication/serialport.cpp
-        Data/database.h Data/database.cpp
+
         Utils/logger.h Utils/logger.cpp
         UI/mainwindow.h UI/mainwindow.cpp UI/mainwindow.ui
         Core/device.h Core/device.cpp
@@ -35,6 +35,9 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/devicedata.h
         Data/databasemanager.h Data/databasemanager.cpp
         UI/minichartwidget.h UI/minichartwidget.cpp
+        Core/alarm.h
+        Core/alarmmanager.h Core/alarmmanager.cpp
+
 
     )
 # Define target properties for Android with Qt 6 as:

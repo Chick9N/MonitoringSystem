@@ -1847,3 +1847,674 @@ QDateTime::fromString(
 5. 根据需要增加报警历史记录。
 
 在此基础上，再逐步进入串口通信、Modbus 等真实设备通信功能的开发。
+
+# Day6 开发日志——设备状态与报警管理模块
+
+## 一、开发日期
+
+2026 年 9 月
+
+## 二、开发目标
+
+在前期已经完成设备模拟数据、设备详情显示、SQLite 数据持久化、实时趋势图以及历史数据查询等功能的基础上，本阶段进一步完善设备监控系统的异常处理能力。
+
+前期系统主要解决了“设备数据如何产生、显示和保存”的问题，但对于设备运行过程中出现的异常情况，还缺少统一的检测和管理机制。
+
+因此，本阶段的主要目标是：
+
+1. 建立统一的报警数据结构；
+2. 实现设备温度、电压和在线状态的异常检测；
+3. 实现报警去重机制，避免同一异常持续发生时重复产生报警；
+4. 实现报警恢复检测；
+5. 在主界面显示报警事件和当前未恢复报警；
+6. 将报警事件保存至 SQLite 数据库；
+7. 实现程序重新启动后当前报警状态的恢复。
+
+---
+
+## 三、报警模块设计
+
+### 3.1 报警类型设计
+
+在 `Core` 模块中新增 `Alarm.h`，定义系统支持的报警类型：
+
+```cpp
+enum class AlarmType
+{
+    TemperatureHigh,
+    TemperatureLow,
+    VoltageHigh,
+    VoltageLow,
+    DeviceOffline
+};
+```
+
+当前系统主要检测三类设备状态：
+
+- 温度异常；
+- 电压异常；
+- 设备离线。
+
+其中温度和电压分别进一步划分为过高和过低两种情况。
+
+---
+
+### 3.2 报警信息结构
+
+定义 `AlarmInfo` 作为系统中的统一报警数据对象：
+
+```cpp
+struct AlarmInfo
+{
+    int deviceId = -1;
+    AlarmType type;
+    QString message;
+    QDateTime timestamp;
+    bool recovered = false;
+};
+```
+
+其中：
+
+| 字段 | 含义 |
+|---|---|
+| `deviceId` | 发生报警的设备 ID |
+| `type` | 报警类型 |
+| `message` | 报警具体信息 |
+| `timestamp` | 报警发生或恢复时间 |
+| `recovered` | 是否为恢复事件 |
+
+`recovered = false` 表示报警发生，`recovered = true` 表示之前的报警已经恢复。
+
+---
+
+## 四、AlarmManager 报警管理模块
+
+### 4.1 模块职责
+
+新增 `AlarmManager`，负责从设备数据中判断当前设备是否处于异常状态。
+
+其职责与其他模块保持独立：
+
+```text
+Device
+   ↓
+DeviceManager
+   ↓
+AlarmManager
+   ↓
+AlarmInfo
+   ├──→ MainWindow
+   └──→ DatabaseManager
+```
+
+其中：
+
+- `Device`：保存设备自身数据；
+- `DeviceManager`：统一管理多个设备；
+- `AlarmManager`：负责报警检测和报警状态管理；
+- `MainWindow`：负责报警信息显示；
+- `DatabaseManager`：负责报警数据持久化。
+
+这种设计避免了将报警判断逻辑直接写入界面代码。
+
+---
+
+### 4.2 报警阈值
+
+当前系统采用以下模拟设备运行范围：
+
+| 监测项目 | 正常范围 | 报警条件 |
+|---|---|---|
+| 温度 | 15～50 ℃ | `<15 ℃` 或 `>50 ℃` |
+| 电压 | 210～230 V | `<210 V` 或 `>230 V` |
+| 在线状态 | 在线 | `isOnline == false` |
+
+报警检测统一通过 `checkAlarm()` 完成。
+
+例如：
+
+```cpp
+checkAlarm(
+    deviceId,
+    AlarmType::TemperatureHigh,
+    data.temperature > 50,
+    "温度过高"
+);
+```
+
+这种统一处理方式减少了不同报警类型之间的重复代码。
+
+---
+
+## 五、报警去重与恢复机制
+
+设备数据每秒更新一次，如果某个设备持续处于异常状态，不能每秒产生一条新的报警记录。
+
+因此 `AlarmManager` 使用：
+
+```cpp
+QMap<int, QList<AlarmType>> m_activeAlarms;
+```
+
+保存当前已经处于激活状态的报警。
+
+报警处理逻辑为：
+
+```text
+检测到异常
+   ↓
+是否已经存在该报警？
+   ├── 是 → 不重复产生报警
+   └── 否 → 创建新的 AlarmInfo
+                ↓
+          加入活动报警
+                ↓
+          发出 alarmTriggered
+```
+
+当设备恢复正常时：
+
+```text
+检测到恢复
+   ↓
+之前是否存在该报警？
+   ├── 否 → 不处理
+   └── 是 → 创建恢复事件
+                ↓
+          清除活动报警
+                ↓
+          发出 alarmTriggered
+```
+
+因此可以正确处理：
+
+```text
+报警 → 持续异常 → 恢复 → 再次报警
+```
+
+同一种异常在持续期间不会被重复记录，而恢复后再次发生时可以重新产生报警。
+
+---
+
+## 六、DeviceManager 集成 AlarmManager
+
+在 `DeviceManager` 中增加 `AlarmManager`：
+
+```cpp
+AlarmManager *m_alarmManager;
+```
+
+设备更新完成后进行报警检查：
+
+```cpp
+m_alarmManager->checkDeviceData(
+    device->id(),
+    device->data()
+);
+```
+
+同时将 `AlarmManager` 的报警信号转发出去：
+
+```cpp
+void alarmTriggered(const AlarmInfo &alarm);
+```
+
+这样 `MainWindow` 无需直接依赖 `AlarmManager` 的内部实现，只需要监听 `DeviceManager` 的报警信号。
+
+---
+
+## 七、MainWindow 报警显示
+
+主界面新增两个报警表格。
+
+### 7.1 报警事件表
+
+`alarmTable` 用于保存所有报警事件，包括报警发生和报警恢复。
+
+表格字段：
+
+```text
+设备ID | 类型 | 信息 | 时间
+```
+
+例如：
+
+```text
+1 | 报警 | 温度过高 | 15:21:03
+1 | 恢复 | 温度过高，已恢复正常 | 15:25:17
+```
+
+该表用于记录报警事件的完整过程。
+
+---
+
+### 7.2 当前报警表
+
+`currentAlarmTable` 只显示当前尚未恢复的报警。
+
+表格字段：
+
+```text
+设备ID | 报警类型 | 报警信息 | 发生时间
+```
+
+例如：
+
+```text
+1 | 温度 | 温度过高 | 15:21:03
+2 | 电压 | 电压过低 | 15:23:11
+```
+
+当报警恢复时，对应记录会从当前报警表中删除。
+
+因此两个表承担不同职责：
+
+```text
+alarmTable
+    ↓
+所有历史报警事件
+
+currentAlarmTable
+    ↓
+当前仍然存在的报警
+```
+
+---
+
+## 八、Qt::UserRole 保存报警类型
+
+为了在表格中显示可读的报警类型，同时保留程序内部使用的 `AlarmType`，在 `QTableWidgetItem` 中使用 `Qt::UserRole` 保存枚举值。
+
+写入：
+
+```cpp
+typeItem->setData(
+    Qt::UserRole,
+    static_cast<int>(alarm.type)
+);
+```
+
+读取：
+
+```cpp
+AlarmType currentType =
+    static_cast<AlarmType>(
+        item->data(Qt::UserRole).toInt()
+    );
+```
+
+这样可以将：
+
+```text
+程序内部：
+TemperatureHigh
+```
+
+和：
+
+```text
+界面显示：
+温度
+```
+
+分离。
+
+同时通过 `deviceId + AlarmType` 判断当前报警是否已经存在。
+
+---
+
+## 九、SQLite 报警历史持久化
+
+### 9.1 创建报警历史表
+
+在 `DatabaseManager::createTables()` 中增加：
+
+```sql
+CREATE TABLE IF NOT EXISTS alarm_history
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id INTEGER NOT NULL,
+    alarm_type INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    recovered INTEGER NOT NULL,
+    timestamp DATETIME NOT NULL
+)
+```
+
+数据库结构如下：
+
+| 字段 | 类型 | 作用 |
+|---|---|---|
+| `id` | INTEGER | 报警记录 ID |
+| `device_id` | INTEGER | 设备 ID |
+| `alarm_type` | INTEGER | 报警类型 |
+| `message` | TEXT | 报警信息 |
+| `recovered` | INTEGER | 是否为恢复事件 |
+| `timestamp` | DATETIME | 时间 |
+
+由于 SQLite 不直接保存 C++ `enum class`，因此将 `AlarmType` 转换为整数进行存储。
+
+同时：
+
+```text
+recovered = 0
+```
+
+表示报警发生；
+
+```text
+recovered = 1
+```
+
+表示报警恢复。
+
+---
+
+### 9.2 报警索引
+
+为报警历史数据增加：
+
+```sql
+CREATE INDEX IF NOT EXISTS
+idx_alarm_history_device_time
+ON alarm_history(device_id, timestamp)
+```
+
+用于提高按照设备和时间查询报警记录时的效率。
+
+---
+
+## 十、报警记录写入数据库
+
+在 `DatabaseManager` 中增加：
+
+```cpp
+void insertAlarm(const AlarmInfo &alarm);
+```
+
+报警发生或恢复时，将 `AlarmInfo` 写入 `alarm_history`。
+
+数据流为：
+
+```text
+AlarmManager
+     ↓
+AlarmInfo
+     ↓
+MainWindow::handleAlarm()
+     ├── 更新界面
+     └── DatabaseManager::insertAlarm()
+                    ↓
+             alarm_history
+```
+
+这样报警信息不会因为程序关闭而丢失。
+
+---
+
+## 十一、报警历史查询
+
+增加：
+
+```cpp
+QList<AlarmInfo> queryAlarmHistory();
+```
+
+程序启动后从 `alarm_history` 中读取历史报警记录，并加载到 `alarmTable`。
+
+数据库中的字符串时间通过：
+
+```cpp
+QDateTime::fromString(
+    query.value("timestamp").toString(),
+    "yyyy-MM-dd HH:mm:ss"
+);
+```
+
+重新转换为 `QDateTime`。
+
+---
+
+## 十二、程序启动后的当前报警恢复
+
+仅仅加载报警历史还不够。
+
+例如数据库中存在：
+
+```text
+设备1 温度报警
+设备1 温度恢复
+设备2 电压报警
+```
+
+程序重新启动后，设备1不应该被认为仍然处于报警状态，而设备2应该恢复为当前报警。
+
+因此增加：
+
+```cpp
+QList<AlarmInfo> queryActiveAlarms();
+```
+
+查询每一个：
+
+```text
+设备ID + 报警类型
+```
+
+的最后一条报警记录。
+
+如果最后一条记录：
+
+```text
+recovered = 0
+```
+
+则说明该报警目前仍未恢复，应重新加入 `currentAlarmTable`。
+
+由此实现：
+
+```text
+程序运行
+   ↓
+产生报警
+   ↓
+保存 SQLite
+   ↓
+关闭程序
+   ↓
+重新启动
+   ↓
+读取 alarm_history
+   ↓
+恢复历史报警
+   ↓
+恢复当前未解决报警
+```
+
+---
+
+## 十三、报警统计
+
+主界面增加报警数量统计，用于显示：
+
+```text
+报警事件：XX
+当前报警：XX
+```
+
+通过：
+
+```cpp
+void MainWindow::updateAlarmStatistics()
+```
+
+统一根据两个表格的行数更新统计信息。
+
+报警发生时：
+
+```text
+报警事件 +1
+当前报警 +1
+```
+
+报警恢复时：
+
+```text
+报警事件 +1
+当前报警 -1
+```
+
+程序启动加载数据库后也会重新统计。
+
+---
+
+## 十四、测试情况
+
+本阶段对报警模块进行了以下测试。
+
+### 1. 持续报警测试
+
+设备持续超过温度阈值时，只产生一次报警。
+
+结果：
+
+```text
+报警 → 正常
+```
+
+不会产生大量重复记录。
+
+### 2. 报警恢复测试
+
+设备从异常状态恢复正常后：
+
+```text
+报警事件表：增加一条恢复记录
+当前报警表：删除对应报警
+```
+
+### 3. 再次报警测试
+
+设备恢复后再次进入异常状态，可以重新产生报警。
+
+测试流程：
+
+```text
+报警
+ ↓
+恢复
+ ↓
+再次报警
+```
+
+能够正常工作。
+
+### 4. 多报警同时存在
+
+同一设备可以同时存在不同类型的报警。
+
+例如：
+
+```text
+设备1 | 温度 | 温度过高
+设备1 | 电压 | 电压过高
+```
+
+两种报警互不影响。
+
+### 5. 程序重启测试
+
+程序关闭后重新启动，从 SQLite 中读取报警历史，并恢复当前未解决报警。
+
+---
+
+## 十五、本阶段遇到的问题
+
+### 15.1 持续异常导致报警重复触发
+
+最初如果每次设备数据更新都直接发送报警信号，那么一个持续异常可能每秒产生一条报警。
+
+通过 `m_activeAlarms` 保存当前活动报警状态后解决。
+
+---
+
+### 15.2 报警类型的显示和程序判断存在冲突
+
+界面需要显示：
+
+```text
+温度
+```
+
+但程序判断需要区分：
+
+```text
+TemperatureHigh
+TemperatureLow
+```
+
+因此使用 `Qt::UserRole` 保存实际的 `AlarmType`，显示文本和内部数据分离。
+
+---
+
+### 15.3 程序重启后无法直接判断当前报警
+
+历史报警记录和当前报警状态不是同一个概念。
+
+通过查询每一个“设备 + 报警类型”的最后一条记录解决了这一问题。
+
+---
+
+## 十六、本阶段完成情况
+
+Day6 完成了设备监控系统基础报警管理模块，实现：
+
+- [x] `AlarmInfo` 报警数据结构
+- [x] 多种报警类型定义
+- [x] 温度异常检测
+- [x] 电压异常检测
+- [x] 设备离线检测
+- [x] 报警去重
+- [x] 报警恢复
+- [x] 多报警并存
+- [x] 报警事件记录
+- [x] 当前报警管理
+- [x] SQLite 报警历史持久化
+- [x] 报警历史查询
+- [x] 当前报警状态恢复
+- [x] 报警数量统计
+- [x] 报警数据库索引
+
+至此，系统已经从单纯的设备数据监控进一步扩展为具备基础异常检测和报警管理能力的设备监控上位机。
+
+---
+
+## 十七、下一阶段计划
+
+下一阶段进入**串口通信模块开发**。
+
+当前系统中的设备数据仍然主要由 `Device` 内部模拟生成，下一阶段将逐步建立真实设备通信链路：
+
+```text
+真实设备
+    ↓
+串口通信
+    ↓
+SerialPort
+    ↓
+数据解析
+    ↓
+DeviceManager
+    ↓
+Device
+    ↓
+AlarmManager
+    ↓
+MainWindow / DatabaseManager
+```
+
+在进入真实串口通信之前，需要适当调整 `Device` 的数据更新方式，使设备对象既能够继续支持当前的模拟数据，又能够接收来自通信模块的真实设备数据。
+
+---
+

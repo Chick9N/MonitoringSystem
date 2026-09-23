@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>482</width>
-    <height>981</height>
+    <width>764</width>
+    <height>585</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -69,25 +69,89 @@
       </widget>
      </item>
      <item>
-      <widget class="QGroupBox" name="groupBox">
+      <widget class="QWidget" name="widget" native="true">
        <property name="minimumSize">
         <size>
          <width>0</width>
-         <height>420</height>
+         <height>450</height>
         </size>
        </property>
        <property name="maximumSize">
         <size>
          <width>16777215</width>
-         <height>420</height>
+         <height>450</height>
         </size>
        </property>
-       <property name="title">
-        <string>实时数据</string>
-       </property>
-       <layout class="QVBoxLayout" name="verticalLayout_8">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
         <item>
-         <widget class="QWidget" name="temperatureChartWidget" native="true">
+         <widget class="QGroupBox" name="groupBox">
+          <property name="minimumSize">
+           <size>
+            <width>360</width>
+            <height>420</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>360</width>
+            <height>420</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>实时数据</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_8">
+           <item>
+            <widget class="QWidget" name="temperatureChartWidget" native="true">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_5"/>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="voltageChartWidget" native="true">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_6"/>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="historyGroupBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
             <horstretch>0</horstretch>
@@ -96,250 +160,204 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>0</width>
-            <height>170</height>
+            <width>360</width>
+            <height>420</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
-            <width>16777215</width>
-            <height>170</height>
+            <width>360</width>
+            <height>420</height>
            </size>
           </property>
-          <layout class="QVBoxLayout" name="verticalLayout_5"/>
-         </widget>
-        </item>
-        <item>
-         <widget class="QWidget" name="voltageChartWidget" native="true">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
+          <property name="title">
+           <string>历史数据</string>
           </property>
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>170</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>170</height>
-           </size>
-          </property>
-          <layout class="QVBoxLayout" name="verticalLayout_6"/>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-     </item>
-     <item>
-      <widget class="QGroupBox" name="historyGroupBox">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>420</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>16777215</width>
-         <height>420</height>
-        </size>
-       </property>
-       <property name="title">
-        <string>历史数据</string>
-       </property>
-       <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,1,1">
-        <item>
-         <widget class="QWidget" name="historyTemperatureChartWidget" native="true">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>170</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>170</height>
-           </size>
-          </property>
-          <layout class="QVBoxLayout" name="verticalLayout_7"/>
-         </widget>
-        </item>
-        <item>
-         <widget class="QWidget" name="historyVoltageChartWidget" native="true">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>170</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>170</height>
-           </size>
-          </property>
-          <layout class="QVBoxLayout" name="verticalLayout_4"/>
-         </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2">
-          <item>
-           <spacer name="horizontalSpacer_2">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Policy::Fixed</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>60</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item>
-           <widget class="QLabel" name="label">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="text">
-             <string>时间范围：</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="horizontalSpacer_5">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Policy::Fixed</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>20</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item>
-           <widget class="QComboBox" name="historyRangeComboBox">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>0</height>
-             </size>
-            </property>
-            <property name="baseSize">
-             <size>
-              <width>0</width>
-              <height>0</height>
-             </size>
-            </property>
-            <item>
-             <property name="text">
-              <string>最近1分钟</string>
+          <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,1,1">
+           <item>
+            <widget class="QWidget" name="historyTemperatureChartWidget" native="true">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
              </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>最近10分钟</string>
+             <property name="minimumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
              </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>最近1小时</string>
+             <property name="maximumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
              </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>最近24小时</string>
+             <layout class="QVBoxLayout" name="verticalLayout_7"/>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="historyVoltageChartWidget" native="true">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
              </property>
-            </item>
-           </widget>
-          </item>
-          <item>
-           <spacer name="horizontalSpacer_4">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Policy::Fixed</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>20</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item>
-           <widget class="QPushButton" name="queryHistoryButton">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="text">
-             <string>查询</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="horizontalSpacer">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-            <property name="sizeType">
-             <enum>QSizePolicy::Policy::Fixed</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>60</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-         </layout>
+             <property name="minimumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>340</width>
+               <height>170</height>
+              </size>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_4"/>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_2">
+             <item>
+              <spacer name="horizontalSpacer_2">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Policy::Fixed</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QLabel" name="label">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="text">
+                <string>时间范围：</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer_5">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Policy::Fixed</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QComboBox" name="historyRangeComboBox">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="baseSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <item>
+                <property name="text">
+                 <string>最近1分钟</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>最近10分钟</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>最近1小时</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>最近24小时</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer_4">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Policy::Fixed</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="queryHistoryButton">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="text">
+                <string>查询</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Policy::Fixed</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
         </item>
        </layout>
       </widget>

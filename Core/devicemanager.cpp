@@ -2,8 +2,17 @@
 
 #include <QRandomGenerator>
 #include <QDebug>
-DeviceManager::DeviceManager(QObject *parent) : QObject(parent) {
-
+DeviceManager::DeviceManager(QObject *parent)
+    : QObject(parent)
+    , m_alarmManager(new AlarmManager(this))
+{
+    // 转发信号
+    connect(
+        m_alarmManager,
+        &AlarmManager::alarmTriggered,
+        this,
+        &DeviceManager::alarmTriggered
+    );
 }
 
 void DeviceManager::addDevice(Device *device){
@@ -36,6 +45,11 @@ QList<Device*> DeviceManager::devices() const{
 void DeviceManager::updateAllDevices(){
     for(Device* device:m_devices){
         device->updateData();
+
+        m_alarmManager->checkDeviceData(
+            device->id(),
+            device->data()
+        );
     }
 }
 

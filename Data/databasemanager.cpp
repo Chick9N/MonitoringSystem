@@ -46,6 +46,7 @@ bool DatabaseManager::createTables()
 {
     QSqlQuery query;
 
+    // 1. 创建设备历史数据表
     QString createTableSql = R"(
         CREATE TABLE IF NOT EXISTS device_history
         (
@@ -66,6 +67,7 @@ bool DatabaseManager::createTables()
         return false;
     }
 
+    // 2. 创建设备历史数据索引
     QString createIndexSql = R"(
         CREATE INDEX IF NOT EXISTS
         idx_device_history_device_time
@@ -75,6 +77,43 @@ bool DatabaseManager::createTables()
     if (!query.exec(createIndexSql))
     {
         qDebug() << "创建索引失败:"
+                 << query.lastError();
+
+        return false;
+    }
+
+    // 3. 创建报警历史表
+    QString createAlarmTableSql = R"(
+        CREATE TABLE IF NOT EXISTS alarm_history
+        (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER NOT NULL,
+            alarm_type INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            recovered INTEGER NOT NULL,
+            timestamp DATETIME NOT NULL
+        )
+    )";
+
+    if (!query.exec(createAlarmTableSql))
+    {
+        qDebug() << "创建报警历史表失败:"
+                 << query.lastError();
+
+        return false;
+    }
+
+
+    // 4. 创建报警历史数据索引
+    QString createAlarmIndexSql = R"(
+    CREATE INDEX IF NOT EXISTS
+    idx_alarm_history_device_time
+    ON alarm_history(device_id, timestamp)
+)";
+
+    if (!query.exec(createAlarmIndexSql))
+    {
+        qDebug() << "创建报警索引失败:"
                  << query.lastError();
 
         return false;
@@ -322,3 +361,152 @@ bool DatabaseManager::deleteDeviceHistory(int deviceId)
     return true;
 }
 
+void DatabaseManager::insertAlarm(const AlarmInfo &alarm)
+{
+    QSqlQuery query(m_database);
+
+    query.prepare(
+        "INSERT INTO alarm_history "
+        "(device_id, alarm_type, message, recovered, timestamp) "
+        "VALUES (?, ?, ?, ?, ?)"
+        );
+
+    query.addBindValue(alarm.deviceId);
+    query.addBindValue(static_cast<int>(alarm.type));
+    query.addBindValue(alarm.message);
+    query.addBindValue(alarm.recovered ? 1 : 0);
+
+    query.addBindValue(
+        alarm.timestamp.toString("yyyy-MM-dd HH:mm:ss")
+        );
+
+    if (!query.exec())
+    {
+        qDebug() << "插入报警记录失败："
+                 << query.lastError().text();
+    }
+}
+
+QList<AlarmInfo> DatabaseManager::queryAlarmHistory()
+{
+    QList<AlarmInfo> alarms;
+
+    QSqlQuery query(m_database);
+
+    query.prepare(
+        "SELECT device_id, alarm_type, message, recovered, timestamp "
+        "FROM alarm_history "
+        "ORDER BY timestamp ASC"
+        );
+
+    if (!query.exec())
+    {
+        qDebug() << "查询报警历史失败:"
+                 << query.lastError().text();
+
+        return alarms;
+    }
+
+    while (query.next())
+    {
+        AlarmInfo alarm;
+
+        alarm.deviceId =
+            query.value("device_id").toInt();
+
+        alarm.type =
+            static_cast<AlarmType>(
+                query.value("alarm_type").toInt()
+                );
+
+        alarm.message =
+            query.value("message").toString();
+
+        alarm.recovered =
+            query.value("recovered").toInt() != 0;
+
+        alarm.timestamp =
+            QDateTime::fromString(
+                query.value("timestamp").toString(),
+                "yyyy-MM-dd HH:mm:ss"
+                );
+
+        alarms.append(alarm);
+    }
+
+    return alarms;
+}
+
+QList<AlarmInfo> DatabaseManager::queryActiveAlarms()
+{
+    QList<AlarmInfo> alarms;
+
+    QSqlQuery query(m_database);
+
+    query.prepare(R"(
+        SELECT a.device_id,
+               a.alarm_type,
+               a.message,
+               a.recovered,
+               a.timestamp
+        FROM alarm_history a
+        WHERE a.id = (
+            SELECT b.id
+            FROM alarm_history b
+            WHERE b.device_id = a.device_id
+              AND b.alarm_type = a.alarm_type
+            ORDER BY b.id DESC
+            LIMIT 1
+        )
+        AND a.recovered = 0
+        ORDER BY a.timestamp ASC
+    )");
+
+    if (!query.exec())
+    {
+        qDebug() << "查询当前报警失败:"
+                 << query.lastError().text();
+
+        return alarms;
+    }
+
+    while (query.next())
+    {
+        AlarmInfo alarm;
+
+        alarm.deviceId =
+            query.value("device_id").toInt();
+
+        alarm.type =
+            static_cast<AlarmType>(
+                query.value("alarm_type").toInt()
+                );
+
+        alarm.message =
+            query.value("message").toString();
+
+        alarm.recovered =
+            query.value("recovered").toInt() != 0;
+
+        alarm.timestamp =
+            QDateTime::fromString(
+                query.value("timestamp").toString(),
+                "yyyy-MM-dd HH:mm:ss"
+                );
+
+        alarms.append(alarm);
+    }
+
+    return alarms;
+}
+
+void DatabaseManager::deleteAlarmHistory()
+{
+    QSqlQuery query(m_database);
+
+    if (!query.exec("DELETE FROM alarm_history"))
+    {
+        qDebug() << "删除报警历史失败:"
+                 << query.lastError().text();
+    }
+}

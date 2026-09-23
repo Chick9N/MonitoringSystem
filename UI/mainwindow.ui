@@ -10,6 +10,12 @@
     <height>498</height>
    </rect>
   </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
@@ -70,6 +76,75 @@
       <column>
        <property name="text">
         <string>温度走势图</string>
+       </property>
+      </column>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>报警信息</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="alarmCountLabel">
+      <property name="text">
+       <string>报警事件：</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QTableWidget" name="alarmTable">
+      <column>
+       <property name="text">
+        <string>设备ID</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>报警类型</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>报警信息</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>时间</string>
+       </property>
+      </column>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="currentAlarmCountLabel">
+      <property name="text">
+       <string>当前报警：</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QTableWidget" name="currentAlarmTable">
+      <column>
+       <property name="text">
+        <string>设备ID</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>报警类型</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>报警信息</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>发生时间</string>
        </property>
       </column>
      </widget>

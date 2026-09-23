@@ -23,7 +23,12 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
-
+    int findCurrentAlarm(
+        int deviceId,
+        AlarmType type) const;
+    void loadAlarmHistory();
+    void loadCurrentAlarms();
+    void updateAlarmStatistics();
 private:
     Ui::MainWindow *ui;
     DeviceManager *deviceManager;
@@ -39,6 +44,8 @@ private slots:
     void on_startAllBtn_clicked();
     void on_stopAllBtn_clicked();
     void on_deviceTable_cellDoubleClicked(int row, int column);
+
+    void handleAlarm(const AlarmInfo &alarm);
 };
 
 #endif // MAINWINDOW_H

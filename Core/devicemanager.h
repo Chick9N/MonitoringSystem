@@ -3,7 +3,8 @@
 
 #include <QObject>
 #include <QList>
-#include "Device.h"
+#include "device.h"
+#include "alarmmanager.h"
 
 class DeviceManager : public QObject
 {
@@ -22,9 +23,11 @@ public slots:
 
 signals:
     void deviceDataUpdated(int deviceId,const DeviceData &data);
+    void alarmTriggered(const AlarmInfo &alarm);
 
 private:
     QList<Device*> m_devices; // 设备容器
+    AlarmManager *m_alarmManager;
 };
 
 #endif // DEVICEMANAGER_H

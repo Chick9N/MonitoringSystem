@@ -6,7 +6,7 @@
 #include <QList>
 #include <QDateTime>
 #include "../Core/devicedata.h"
-
+#include "../Core/alarm.h"
 
 // 封装一条数据库历史记录
 struct DeviceHistory
@@ -47,6 +47,10 @@ public:
     // 删除某设备全部历史数据
     bool deleteDeviceHistory(int deviceId);
 
+    void insertAlarm(const AlarmInfo &alarm);
+    QList<AlarmInfo> queryAlarmHistory();
+    QList<AlarmInfo> queryActiveAlarms();
+    void deleteAlarmHistory();
 private:
 
     QSqlDatabase m_database;

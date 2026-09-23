@@ -77,6 +77,9 @@ MainWindow::MainWindow(QWidget *parent)
     databaseManager->openDatabase();
     databaseManager->createTables();
 
+    loadAlarmHistory();
+    loadCurrentAlarms();
+
     connect(deviceManager,
             &DeviceManager::deviceDataUpdated,
             this,
@@ -84,6 +87,14 @@ MainWindow::MainWindow(QWidget *parent)
                 databaseManager->insertDeviceData(deviceId,data);
             }
             );
+
+    connect(
+        deviceManager,
+        &DeviceManager::alarmTriggered,
+        this,
+        &MainWindow::handleAlarm
+        );
+
 }
 
 void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
@@ -250,3 +261,252 @@ void MainWindow::on_deviceTable_cellDoubleClicked(int row, int column)
 
     widget->show();
 }
+
+void MainWindow::handleAlarm(const AlarmInfo &alarm)
+{
+    // 保存报警记录
+    databaseManager->insertAlarm(alarm);
+
+    // 1. 记录报警事件
+    int row = ui->alarmTable->rowCount();
+
+    ui->alarmTable->insertRow(row);
+
+    ui->alarmTable->setItem(
+        row,
+        0,
+        new QTableWidgetItem(
+            QString::number(alarm.deviceId)
+            )
+        );
+
+    ui->alarmTable->setItem(
+        row,
+        1,
+        new QTableWidgetItem(
+            alarm.recovered ? "恢复" : "报警"
+            )
+        );
+
+    ui->alarmTable->setItem(
+        row,
+        2,
+        new QTableWidgetItem(alarm.message)
+        );
+
+    ui->alarmTable->setItem(
+        row,
+        3,
+        new QTableWidgetItem(
+            alarm.timestamp.toString("HH:mm:ss")
+            )
+        );
+
+    // 2. 更新当前报警状态
+
+    if (!alarm.recovered)
+    {
+        // 防止重复加入
+        if (findCurrentAlarm(alarm.deviceId, alarm.type) == -1)
+        {
+            int currentRow = ui->currentAlarmTable->rowCount();
+
+            ui->currentAlarmTable->insertRow(currentRow);
+
+            // 设备ID
+            ui->currentAlarmTable->setItem(
+                currentRow,
+                0,
+                new QTableWidgetItem(
+                    QString::number(alarm.deviceId)
+                    )
+                );
+
+            // 报警类型
+            auto *typeItem = new QTableWidgetItem(alarmTypeToString(alarm.type));
+
+            typeItem->setData(
+                Qt::UserRole,
+                static_cast<int>(alarm.type)
+                );
+
+            ui->currentAlarmTable->setItem(
+                currentRow,
+                1,
+                typeItem
+                );
+
+            // 报警信息
+            ui->currentAlarmTable->setItem(
+                currentRow,
+                2,
+                new QTableWidgetItem(alarm.message)
+                );
+
+            // 发生时间
+            ui->currentAlarmTable->setItem(
+                currentRow,
+                3,
+                new QTableWidgetItem(
+                    alarm.timestamp.toString("HH:mm:ss")
+                    )
+                );
+        }
+    }
+    else
+    {
+        int row = findCurrentAlarm(
+            alarm.deviceId,
+            alarm.type
+            );
+
+        if (row != -1)
+        {
+            ui->currentAlarmTable->removeRow(row);
+        }
+    }
+
+    // 更新统计数字
+    updateAlarmStatistics();
+}
+
+int MainWindow::findCurrentAlarm(
+    int deviceId,
+    AlarmType type) const
+{
+    for (int row = 0;
+         row < ui->currentAlarmTable->rowCount();
+         ++row)
+    {
+        int id = ui->currentAlarmTable
+                     ->item(row, 0)
+                     ->text()
+                     .toInt();
+
+        AlarmType currentType =
+            static_cast<AlarmType>(
+                ui->currentAlarmTable
+                    ->item(row, 1)
+                    ->data(Qt::UserRole)
+                    .toInt()
+                );
+
+        if (id == deviceId && currentType == type)
+            return row;
+    }
+
+    return -1;
+}
+
+void MainWindow::loadAlarmHistory()
+{
+    QList<AlarmInfo> alarms =
+        databaseManager->queryAlarmHistory();
+
+    for (const AlarmInfo &alarm : alarms)
+    {
+        int row = ui->alarmTable->rowCount();
+
+        ui->alarmTable->insertRow(row);
+
+        ui->alarmTable->setItem(
+            row,
+            0,
+            new QTableWidgetItem(
+                QString::number(alarm.deviceId)
+                )
+            );
+
+        ui->alarmTable->setItem(
+            row,
+            1,
+            new QTableWidgetItem(
+                alarm.recovered ? "恢复" : "报警"
+                )
+            );
+
+        ui->alarmTable->setItem(
+            row,
+            2,
+            new QTableWidgetItem(
+                alarm.message
+                )
+            );
+
+        ui->alarmTable->setItem(
+            row,
+            3,
+            new QTableWidgetItem(
+                alarm.timestamp.toString("HH:mm:ss")
+                )
+            );
+    }
+}
+
+void MainWindow::loadCurrentAlarms()
+{
+    QList<AlarmInfo> alarms =
+        databaseManager->queryActiveAlarms();
+
+    for (const AlarmInfo &alarm : alarms)
+    {
+        int row =
+            ui->currentAlarmTable->rowCount();
+
+        ui->currentAlarmTable->insertRow(row);
+
+        ui->currentAlarmTable->setItem(
+            row,
+            0,
+            new QTableWidgetItem(
+                QString::number(alarm.deviceId)
+                )
+            );
+
+        auto *typeItem =
+            new QTableWidgetItem(
+                alarmTypeToString(alarm.type)
+                );
+
+        typeItem->setData(
+            Qt::UserRole,
+            static_cast<int>(alarm.type)
+            );
+
+        ui->currentAlarmTable->setItem(
+            row,
+            1,
+            typeItem
+            );
+
+        ui->currentAlarmTable->setItem(
+            row,
+            2,
+            new QTableWidgetItem(
+                alarm.message
+                )
+            );
+
+        ui->currentAlarmTable->setItem(
+            row,
+            3,
+            new QTableWidgetItem(
+                alarm.timestamp.toString("HH:mm:ss")
+                )
+            );
+    }
+}
+
+void MainWindow::updateAlarmStatistics()
+{
+    ui->alarmCountLabel->setText(
+        QString("报警事件：%1")
+            .arg(ui->alarmTable->rowCount())
+        );
+
+    ui->currentAlarmCountLabel->setText(
+        QString("当前报警：%1")
+            .arg(ui->currentAlarmTable->rowCount())
+        );
+}
+
