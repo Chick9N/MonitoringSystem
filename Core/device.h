@@ -10,8 +10,9 @@ class Device : public QObject
 public:
     explicit Device(int id,QObject *parent = nullptr);
     int id() const;
-    DeviceData data() const;
+    const DeviceData& data() const;
     void updateData();
+    void setData(const DeviceData &data);
 
     void start();
     void stop();

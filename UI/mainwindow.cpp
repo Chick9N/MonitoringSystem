@@ -65,6 +65,7 @@ MainWindow::MainWindow(QWidget *parent)
             &DeviceManager::deviceDataUpdated,
             this,
             &MainWindow::updateDeviceUI);
+
     // 定时更新所有设备
     connect(timer,
             &QTimer::timeout,
@@ -95,10 +96,49 @@ MainWindow::MainWindow(QWidget *parent)
         &MainWindow::handleAlarm
         );
 
+
+    // 串口测试用
+    deviceManager->setDataSource(DataSource::Serial);
+
+    QByteArray testFrame;
+
+    // 完整帧
+    testFrame.append(char(0xAA));
+    testFrame.append(char(0x01));
+    testFrame.append(char(0x20));
+    testFrame.append(char(0x00));
+    testFrame.append(char(0xDC));
+    testFrame.append(char(0x01));
+    testFrame.append(char(0x55));
+
+    deviceManager->simulateSerialData(testFrame);
+
+    // 半包
+    deviceManager->simulateSerialData(
+        QByteArray::fromHex("AA0120")
+        );
+
+    deviceManager->simulateSerialData(
+        QByteArray::fromHex("00DC0155")
+        );
+
+    // 粘包
+    deviceManager->simulateSerialData(
+        QByteArray::fromHex(
+            "AA012000DC0155"
+            "AA022200DD0155"
+            )
+        );
 }
 
 void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
 {
+    qDebug() << "MainWindow 收到数据:"
+             << deviceId
+             << data.temperature
+             << data.voltage
+             << data.isOnline;
+
     int row = deviceId - 1;
 
     ui->deviceTable->setRowHeight(row, 120);

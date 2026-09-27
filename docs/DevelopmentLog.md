@@ -2517,4 +2517,490 @@ MainWindow / DatabaseManager
 在进入真实串口通信之前，需要适当调整 `Device` 的数据更新方式，使设备对象既能够继续支持当前的模拟数据，又能够接收来自通信模块的真实设备数据。
 
 ---
+# Day7 开发日志：串口通信与设备数据接入
+
+## 一、今日开发目标
+
+本阶段的目标是将设备监控系统从“程序内部模拟设备数据”逐步扩展为能够接收外部真实设备数据的上位机系统。
+
+核心数据链路设计为：
+
+```text
+真实设备
+   ↓
+串口通信
+   ↓
+SerialPort
+   ↓ 原始字节
+ProtocolParser
+   ↓ DeviceData
+DeviceManager
+   ↓
+Device
+   ↓
+监控界面 / 报警 / 数据库 / 历史曲线
+```
+
+---
+
+## 二、今日完成内容
+
+### 1. 完善 Device 数据更新机制
+
+在 `Device` 中增加 `setData()`：
+
+```cpp
+void Device::setData(const DeviceData &data)
+{
+    m_data = data;
+    emit dataUpdated(m_data);
+}
+```
+
+这样设备数据不再只能由 `Device::updateData()` 内部模拟产生，也可以由外部通信模块向设备对象写入。
+
+原有的模拟数据生成机制暂时保留，用于没有真实硬件时进行系统测试。
+
+---
+
+### 2. 完成 SerialPort 串口通信模块
+
+新增 `SerialPort`，对 Qt 的 `QSerialPort` 进行封装。
+
+主要功能：
+
+- 打开串口
+- 关闭串口
+- 判断串口状态
+- 发送数据
+- 接收数据
+- 获取可用串口
+- 处理串口错误
+- 对接收到的数据进行缓存
+
+核心设计：
+
+```text
+QSerialPort
+    ↓
+SerialPort
+    ↓
+dataReceived(QByteArray)
+```
+
+上层不直接操作 `QSerialPort`，从而避免通信细节进入业务层。
+
+---
+
+### 3. 完成串口数据缓冲与拆包
+
+针对串口通信可能出现的：
+
+- 半包
+- 粘包
+- 无效数据
+
+增加接收缓冲区 `m_buffer`，按照固定协议帧进行处理。
+
+当前测试协议长度为 7 字节：
+
+```text
+AA 设备ID 温度 电压高字节 电压低字节 在线状态 55
+```
+
+其中：
+
+- `AA`：帧头
+- `设备ID`：设备编号
+- `温度`：温度值
+- `电压高字节 + 电压低字节`：电压
+- `在线状态`：设备在线状态
+- `55`：帧尾
+
+---
+
+### 4. 完成 ProtocolParser 协议解析模块
+
+新增 `ProtocolParser`，负责将串口收到的原始字节转换为业务层可以直接使用的 `DeviceData`。
+
+例如：
+
+```text
+AA 01 20 00 DC 01 55
+```
+
+解析结果：
+
+```text
+设备ID：1
+温度：32 ℃
+电压：220 V
+在线：true
+```
+
+这样 `DeviceManager` 不需要了解具体字节协议，只接收已经解析完成的设备数据。
+
+---
+
+### 5. 将串口通信接入 DeviceManager
+
+当前通信架构：
+
+```text
+MainWindow
+    ↓
+DeviceManager
+    ↓
+SerialPort
+    ↓
+QSerialPort
+```
+
+`DeviceManager` 持有 `SerialPort`，并负责：
+
+1. 接收串口原始数据
+2. 调用 `ProtocolParser`
+3. 得到 `deviceId + DeviceData`
+4. 找到对应 Device
+5. 更新 Device
+6. 触发已有的监控、报警等逻辑
+
+新增：
+
+```cpp
+void DeviceManager::updateDeviceData(
+    int deviceId,
+    const DeviceData &data);
+```
+
+---
+
+### 6. 增加数据来源控制
+
+增加：
+
+```cpp
+enum class DataSource
+{
+    Simulation,
+    Serial
+};
+```
+
+通过数据来源控制避免模拟数据与串口数据互相覆盖。
+
+模拟模式下：
+
+```text
+Device::updateData()
+```
+
+继续产生模拟数据。
+
+串口模式下：
+
+```text
+SerialPort → ProtocolParser → DeviceManager
+```
+
+负责提供设备数据。
+
+---
+
+### 7. 完成串口通信链路测试
+
+在没有真实串口设备的情况下，增加了临时测试接口 `simulateReceive()`，用于模拟串口收到的数据。
+
+已经验证：
+
+#### 完整数据帧
+
+能够正确解析并更新设备数据。
+
+#### 半包
+
+例如先接收：
+
+```text
+AA 01 20
+```
+
+随后接收：
+
+```text
+00 DC 01 55
+```
+
+最终能够正确拼接并解析。
+
+#### 粘包
+
+一次接收多个连续数据帧：
+
+```text
+AA 01 20 00 DC 01 55
+AA 02 22 00 DD 01 55
+```
+
+能够分别解析为设备 1 和设备 2 的数据。
+
+#### 完整链路
+
+日志已经确认：
+
+```text
+收到设备数据
+    ↓
+DeviceManager 转发数据
+    ↓
+MainWindow 收到数据
+```
+
+因此当前：
+
+**SerialPort → ProtocolParser → DeviceManager → Device → MainWindow**
+
+这一条核心链路已经打通。
+
+---
+
+## 三、当前架构状态
+
+目前系统已经从单纯的模拟监控系统进一步发展为：
+
+```text
+                 ┌──────────────┐
+                 │   真实设备    │
+                 └──────┬───────┘
+                        │
+                    串口数据
+                        ↓
+                 ┌──────────────┐
+                 │  SerialPort  │
+                 └──────┬───────┘
+                        │
+                     原始帧
+                        ↓
+              ┌──────────────────┐
+              │ ProtocolParser   │
+              └────────┬─────────┘
+                       │
+                  DeviceData
+                       ↓
+              ┌──────────────────┐
+              │  DeviceManager   │
+              └────────┬─────────┘
+                       │
+              ┌────────┼─────────┐
+              ↓        ↓         ↓
+           Device   AlarmManager  UI
+              │
+              ↓
+       DatabaseManager
+```
+
+这个架构保持了通信层、协议层、业务层和 UI 层之间的职责分离。
+
+---
+
+## 四、今天暂未完成的内容
+
+今天主要完成的是**串口通信底层链路**，以下内容暂时没有继续实现：
+
+### 1. 串口配置 UI
+
+暂时没有在 MainWindow 中放置大量串口配置控件。
+
+最终决定采用：
+
+```text
+MainWindow
+    ↓
+[串口设备管理]
+    ↓
+SerialConfigWindow
+```
+
+MainWindow 只提供一个进入串口设备管理的入口。
+
+### 2. 新设备自动注册
+
+目前 `DeviceManager::updateDeviceData()` 如果收到一个不存在的设备 ID，暂时无法将其自动加入系统。
+
+例如：
+
+```text
+已有：
+Device 1
+Device 2
+Device 3
+
+串口收到：
+Device 4
+```
+
+下一阶段需要实现：
+
+```text
+发现未知 Device ID
+        ↓
+创建 Device
+        ↓
+加入 DeviceManager
+        ↓
+进入正常监控流程
+```
+
+这将是“通过串口接入新设备”真正完成的关键一步。
+
+### 3. 真实串口硬件测试
+
+当前电脑没有可用的真实串口设备，因此使用模拟接收接口完成协议和数据链路测试。
+
+后续有真实设备或虚拟串口环境后，再进行实际通信测试。
+
+---
+
+# Day8 开发计划：串口设备管理与新设备接入
+
+## 一、第一阶段：创建串口设备管理窗口
+
+新增：
+
+```text
+SerialConfigWindow
+```
+
+MainWindow 不直接管理串口参数，只保留：
+
+```text
+[串口设备管理]
+```
+
+按钮。
+
+点击后打开串口设备管理窗口。
+
+---
+
+## 二、第二阶段：完善串口配置
+
+在 `SerialConfigWindow` 中提供：
+
+- 串口选择
+- 波特率
+- 数据位
+- 校验位
+- 停止位
+- 打开串口
+- 关闭串口
+- 刷新串口
+- 当前串口状态
+
+推荐的波特率选项：
+
+```text
+9600
+19200
+38400
+57600
+115200
+```
+
+窗口通过 `DeviceManager` 操作串口，而不是直接操作 `QSerialPort`。
+
+保持：
+
+```text
+SerialConfigWindow
+        ↓
+DeviceManager
+        ↓
+SerialPort
+        ↓
+QSerialPort
+```
+
+---
+
+## 三、第三阶段：实现未知设备自动注册
+
+修改：
+
+```cpp
+DeviceManager::updateDeviceData()
+```
+
+目标逻辑：
+
+```text
+收到设备数据
+      ↓
+根据 deviceId 查找 Device
+      ↓
+ ┌────┴────┐
+存在       不存在
+ ↓           ↓
+更新       创建 Device
+             ↓
+          addDevice()
+             ↓
+           更新数据
+```
+
+例如串口第一次收到：
+
+```text
+AA 04 20 00 DC 01 55
+```
+
+系统自动创建：
+
+```text
+Device 4
+```
+
+并将其加入设备管理器。
+
+之后设备 4 就可以自动进入：
+
+- 实时监控
+- 温度/电压曲线
+- 报警检测
+- 历史数据记录
+- 设备详情窗口
+
+---
+
+## 四、第四阶段：验证完整的新设备接入流程
+
+最终测试目标：
+
+```text
+模拟/真实设备
+      ↓
+串口
+      ↓
+SerialPort
+      ↓
+ProtocolParser
+      ↓
+发现 Device 4
+      ↓
+自动创建 Device 4
+      ↓
+加入 DeviceManager
+      ↓
+MainWindow 出现 Device 4
+      ↓
+实时数据持续更新
+      ↓
+报警与历史记录正常工作
+```
+
+完成这一流程后，“串口接入新设备”这一阶段的核心功能就基本成立。
+
+---
+
+> 今日日志重点记录“通信链路打通”，明日重点转向“设备接入管理”。UI 美化仍然不在当前阶段进行，统一放到功能开发基本完成后处理。
 

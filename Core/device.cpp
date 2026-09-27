@@ -12,7 +12,7 @@ int Device::id() const{
     return m_id;
 }
 
-DeviceData Device::data() const{
+const DeviceData& Device::data() const{
     return m_data;
 }
 
@@ -27,6 +27,13 @@ void Device::updateData(){
     m_data.isOnline = true;
     m_data.temperature = 20.0 + QRandomGenerator::global()->generateDouble()*40.0;
     m_data.voltage = 220.0 + QRandomGenerator::global()->generateDouble()*3.0;
+    emit dataUpdated(m_data);
+}
+
+void Device::setData(const DeviceData &data)
+{
+    m_data = data;
+
     emit dataUpdated(m_data);
 }
 
