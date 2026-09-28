@@ -6,6 +6,7 @@
 #include "../Data/databasemanager.h"
 #include "devicewidget.h"
 
+
 #include <QTimer>
 #include <QMap>
 #include <QList>
@@ -46,6 +47,9 @@ private slots:
     void on_deviceTable_cellDoubleClicked(int row, int column);
 
     void handleAlarm(const AlarmInfo &alarm);
+    void on_serialConfigBtn_clicked();
+
+    void addDeviceRow(int deviceId);
 };
 
 #endif // MAINWINDOW_H

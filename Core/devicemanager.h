@@ -7,6 +7,10 @@
 #include "alarmmanager.h"
 #include "../Communication/serialport.h"
 
+#include <QDateTime>
+#include <QMap>
+#include <QTimer>
+
 enum class DataSource
 {
     Simulation,
@@ -34,7 +38,11 @@ public:
 
     bool openSerialPort(
         const QString &portName,
-        qint32 baudRate = QSerialPort::Baud9600);
+        qint32 baudRate = QSerialPort::Baud9600,
+        QSerialPort::DataBits dataBits = QSerialPort::Data8,
+        QSerialPort::Parity parity = QSerialPort::NoParity,
+        QSerialPort::StopBits stopBits = QSerialPort::OneStop
+        );
 
     void closeSerialPort();
 
@@ -57,11 +65,20 @@ signals:
     void serialPortOpened();
     void serialPortClosed();
     void serialPortError(const QString &message);
+    void deviceAdded(int deviceId);
 private:
     QList<Device*> m_devices; // 设备容器
     AlarmManager *m_alarmManager;
     SerialPort *m_serialPort;
     DataSource m_dataSource = DataSource::Simulation;
+
+    QMap<int, QDateTime> m_lastReceivedTime;
+    QTimer *m_timeoutTimer = nullptr;
+
+    static constexpr int CommunicationTimeoutMs = 5000;
+
+private slots:
+    void checkDeviceTimeout();
 };
 
 #endif // DEVICEMANAGER_H

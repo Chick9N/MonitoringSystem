@@ -1,6 +1,7 @@
 #include "devicemanager.h"
 #include "../Communication/protocolparser.h"
 
+#include <QTimer>
 #include <QRandomGenerator>
 #include <QDebug>
 DeviceManager::DeviceManager(QObject *parent)
@@ -34,6 +35,11 @@ DeviceManager::DeviceManager(QObject *parent)
                 return;
             }
 
+            // 记录有效数据帧的接收时间
+            m_lastReceivedTime[deviceId] =
+                QDateTime::currentDateTime();
+
+
             updateDeviceData(deviceId, data);
         }
         );
@@ -62,10 +68,24 @@ DeviceManager::DeviceManager(QObject *parent)
     // 验证检索串口数据流
     qDebug() << m_serialPort->availablePorts();
     qDebug() << m_serialPort->open("COM99");
+
+    m_timeoutTimer = new QTimer(this);
+
+    connect(
+        m_timeoutTimer,
+        &QTimer::timeout,
+        this,
+        &DeviceManager::checkDeviceTimeout
+        );
+
+    m_timeoutTimer->start(1000);
 }
 
 void DeviceManager::addDevice(Device *device){
     if(!device)
+        return;
+
+    if (getDevice(device->id()))
         return;
 
     m_devices.append(device);
@@ -109,21 +129,25 @@ void DeviceManager::updateDeviceData(
 
     Device *device = getDevice(deviceId);
 
+    // 如果设备不存在，则自动创建
     if (!device)
-        return;
+    {
+        device = new Device(deviceId, this);
+        addDevice(device);
 
+        emit deviceAdded(deviceId);
+
+        qDebug() << "自动发现新设备:" << deviceId;
+    }
+
+    // 更新设备数据
     device->setData(data);
 
+    // 检查设备报警
     m_alarmManager->checkDeviceData(
         deviceId,
         data
         );
-
-    qDebug() << "收到设备数据:"
-             << deviceId
-             << data.temperature
-             << data.voltage
-             << data.isOnline;
 }
 
 void DeviceManager::updateAllDevices(){
@@ -158,11 +182,25 @@ QStringList DeviceManager::availableSerialPorts() const
     return SerialPort::availablePorts();
 }
 
+bool DeviceManager::isSerialPortOpen() const
+{
+    return m_serialPort->isOpen();
+}
+
 bool DeviceManager::openSerialPort(
     const QString &portName,
-    qint32 baudRate)
+    qint32 baudRate,
+    QSerialPort::DataBits dataBits,
+    QSerialPort::Parity parity,
+    QSerialPort::StopBits stopBits)
 {
-    return m_serialPort->open(portName, baudRate);
+    return m_serialPort->open(
+        portName,
+        baudRate,
+        dataBits,
+        parity,
+        stopBits
+        );
 }
 
 void DeviceManager::closeSerialPort()
@@ -185,3 +223,42 @@ void DeviceManager::simulateSerialData(const QByteArray &data)
     m_serialPort->simulateReceive(data);
 }
 
+void DeviceManager::checkDeviceTimeout()
+{
+    // 仅对串口模式下的设备进行超时检测
+    if (m_dataSource != DataSource::Serial)
+        return;
+
+    const QDateTime now = QDateTime::currentDateTime();
+
+    for (Device *device : m_devices)
+    {
+        if (!device)
+            continue;
+
+        int deviceId = device->id();
+
+        // 从未收到过串口数据，不做超时判断
+        if (!m_lastReceivedTime.contains(deviceId))
+            continue;
+
+        // 已经离线，不重复触发
+        if (!device->data().isOnline)
+            continue;
+
+        qint64 elapsed =
+            m_lastReceivedTime.value(deviceId)
+                .msecsTo(now);
+
+        if (elapsed > CommunicationTimeoutMs)
+        {
+            DeviceData data = device->data();
+            data.isOnline = false;
+
+            updateDeviceData(deviceId, data);
+
+            qDebug() << "设备通信超时，已标记离线:"
+                     << deviceId;
+        }
+    }
+}

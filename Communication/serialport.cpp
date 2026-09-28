@@ -39,29 +39,27 @@ SerialPort::SerialPort(QObject *parent)
 // 9600 8N1
 bool SerialPort::open(
     const QString &portName,
-    qint32 baudRate)
+    qint32 baudRate,
+    QSerialPort::DataBits dataBits,
+    QSerialPort::Parity parity,
+    QSerialPort::StopBits stopBits)
 {
     if (m_serialPort->isOpen())
         m_serialPort->close();
 
     m_serialPort->setPortName(portName);
     m_serialPort->setBaudRate(baudRate);
-    m_serialPort->setDataBits(QSerialPort::Data8);
-    m_serialPort->setParity(QSerialPort::NoParity);
-    m_serialPort->setStopBits(QSerialPort::OneStop);
-    m_serialPort->setFlowControl(QSerialPort::NoFlowControl);
+    m_serialPort->setDataBits(dataBits);
+    m_serialPort->setParity(parity);
+    m_serialPort->setStopBits(stopBits);
+    m_serialPort->setFlowControl(
+        QSerialPort::NoFlowControl
+        );
 
     if (!m_serialPort->open(QIODevice::ReadWrite))
-    {
-        emit errorOccurred(
-            m_serialPort->errorString()
-            );
-
         return false;
-    }
 
     m_buffer.clear();
-
     emit opened();
 
     return true;

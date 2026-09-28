@@ -3,6 +3,7 @@
 #include "../UI/devicewidget.h"
 #include <qtablewidget.h>
 #include "minichartwidget.h"
+#include "serialconfigwindow.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -96,6 +97,12 @@ MainWindow::MainWindow(QWidget *parent)
         &MainWindow::handleAlarm
         );
 
+    connect(
+        deviceManager,
+        &DeviceManager::deviceAdded,
+        this,
+        &MainWindow::addDeviceRow
+        );
 
     // 串口测试用
     deviceManager->setDataSource(DataSource::Serial);
@@ -129,6 +136,16 @@ MainWindow::MainWindow(QWidget *parent)
             "AA022200DD0155"
             )
         );
+
+    // 注册新设备
+    deviceManager->simulateSerialData(
+        QByteArray::fromHex("AA042000DC0155")
+        );
+
+    deviceManager->simulateSerialData(
+        QByteArray::fromHex("AA042300DC0155")
+        );
+
 }
 
 void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
@@ -550,3 +567,72 @@ void MainWindow::updateAlarmStatistics()
         );
 }
 
+
+void MainWindow::on_serialConfigBtn_clicked()
+{
+    SerialConfigWindow *window =
+        new SerialConfigWindow(deviceManager, this);
+
+    window->show();
+}
+
+void MainWindow::addDeviceRow(int deviceId)
+{
+    // 防止重复添加表格行
+    for (int row = 0; row < ui->deviceTable->rowCount(); ++row)
+    {
+        auto *item = ui->deviceTable->item(row, 0);
+
+        if (item && item->text().toInt() == deviceId)
+            return;
+    }
+
+    int row = ui->deviceTable->rowCount();
+    ui->deviceTable->insertRow(row);
+
+    ui->deviceTable->setItem(
+        row, 0,
+        new QTableWidgetItem(QString::number(deviceId))
+        );
+
+    ui->deviceTable->setItem(
+        row, 1,
+        new QTableWidgetItem("在线")
+        );
+
+    ui->deviceTable->setItem(
+        row, 2,
+        new QTableWidgetItem("--")
+        );
+
+    ui->deviceTable->setItem(
+        row, 3,
+        new QTableWidgetItem("--")
+        );
+
+    auto *temperatureChart =
+        new MiniChartWidget(
+            ChartType::Temperature,
+            ui->deviceTable
+            );
+
+    auto *voltageChart =
+        new MiniChartWidget(
+            ChartType::Voltage,
+            ui->deviceTable
+            );
+
+    ui->deviceTable->setCellWidget(
+        row, 4, temperatureChart
+        );
+
+    ui->deviceTable->setCellWidget(
+        row, 5, voltageChart
+        );
+
+    // 为新设备初始化曲线缓存
+    m_temperatureHistory[deviceId] = {};
+    m_voltageHistory[deviceId] = {};
+
+    qDebug() << "MainWindow 新增设备行:" << deviceId;
+}
