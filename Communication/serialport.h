@@ -30,6 +30,8 @@ public:
 
     QString errorString() const;
 
+    void setModbusMode(bool enable);
+
     // 测试入口
     void simulateReceive(const QByteArray &data);
     void simulateRawReceive(const QByteArray &data);
@@ -49,6 +51,8 @@ private slots:
 private:
     QSerialPort *m_serialPort;
     QByteArray m_buffer; // 缓冲区
+
+    bool m_modbusMode=false;
 
     // 帧解析
     void processBuffer();

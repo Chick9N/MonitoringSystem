@@ -1,16 +1,16 @@
 #ifndef DEVICEMANAGER_H
 #define DEVICEMANAGER_H
 
-#include <QObject>
-#include <QList>
-#include <QVector>
 #include "device.h"
 #include "alarmmanager.h"
 #include "../Communication/serialport.h"
-
+#include "../Communication/modbustcp.h"
 #include <QDateTime>
 #include <QMap>
 #include <QTimer>
+#include <QObject>
+#include <QList>
+#include <QVector>
 
 enum class DataSource
 {
@@ -21,7 +21,8 @@ enum class DataSource
 enum class ProtocolType
 {
     Custom,     // 当前自定义协议
-    ModbusRTU   // Modbus RTU
+    ModbusRTU,   // Modbus RTU
+    ModbusTCP
 };
 
 class DeviceManager : public QObject
@@ -63,6 +64,17 @@ public:
         quint16 quantity
         );
 
+    // Modbus TCP
+    bool connectModbusTCP(
+        const QString &ip,
+        quint16 port
+        );
+
+    bool requestModbusTCPRead(
+        quint8 unitId,
+        quint16 startAddress,
+        quint16 quantity);
+
     // 信源
     void setDataSource(DataSource source);
     DataSource dataSource() const;
@@ -103,12 +115,21 @@ private:
 
     ProtocolType m_protocolType = ProtocolType::Custom;
 
+    void handleModbusRTUResponse(
+        const QByteArray &data
+        );
+
+
+    void handleModbusTCPResponse(
+        const QByteArray &data
+        );
+
     // Modbus
     // Modbus RTU 接收缓冲区
     QByteArray m_modbusBuffer;
 
     // 当前待处理请求的信息
-    quint8 m_expectedSlave = 0;
+    quint8 m_expectedDeviceId = 0;
     quint16 m_expectedQuantity = 0;
     bool m_modbusRequestPending = false;
 
@@ -122,6 +143,12 @@ private:
         quint8 slaveAddress,
         const QVector<quint16> &registers
         );
+
+    // TCP
+    ModbusTCP *m_modbusTCP;
+    quint16 m_expectedTransactionId = 0;
+    quint8 m_expectedUnitId = 0;
+
     // 轮询
     QTimer *m_modbusPollTimer = nullptr;
     QList<int> m_pollDeviceIds;
@@ -139,6 +166,7 @@ private:
         quint16 quantity
         );
     bool m_autoModbusResponse = true;
+
 private slots:
     void checkDeviceTimeout();
 };

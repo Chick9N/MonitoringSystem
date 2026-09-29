@@ -96,17 +96,21 @@ bool SerialPort::sendData(const QByteArray &data)
 // 接收
 void SerialPort::readData()
 {
-    QByteArray data = m_serialPort->readAll();
+    QByteArray data =
+        m_serialPort->readAll();
 
-    if (data.isEmpty())
+    if(data.isEmpty())
         return;
 
-    // 向上层发送原始字节流
+
     emit rawDataReceived(data);
 
-    // 保留现有自定义协议的接收处理
-    m_buffer.append(data);
-    processBuffer();
+
+    if(!m_modbusMode)
+    {
+        m_buffer.append(data);
+        processBuffer();
+    }
 }
 
 // 解析
@@ -170,6 +174,11 @@ QStringList SerialPort::availablePorts()
     }
 
     return ports;
+}
+
+void SerialPort::setModbusMode(bool enable)
+{
+    m_modbusMode=enable;
 }
 
 QString SerialPort::errorString() const

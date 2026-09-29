@@ -3395,3 +3395,467 @@ UI / SQLite / AlarmManager
 5. 条件允许时使用虚拟串口或 USB 转串口设备进行真实通信测试。
 
 ---
+下面整理成两个部分：
+
+1. `开发日志/day10.md`
+2. Git commit 摘要
+
+内容按照你当前项目《设备监控上位机系统》的开发节奏整理，重点突出**通信层架构完善**，避免写成流水账。
+
+---
+
+## day10.md
+
+```md
+# Day10 开发日志
+
+## 日期
+2026-09-29
+
+## 今日开发内容
+
+今日主要完成设备监控上位机系统通信层扩展，实现 Modbus RTU 与 Modbus TCP 两种工业通信协议的基础支持，并完善 DeviceManager 对不同通信方式的数据管理架构。
+
+---
+
+# 一、Modbus RTU 通信模块完善
+
+## 1. Modbus RTU协议支持
+
+完成 Modbus RTU 基础功能：
+
+- CRC-16校验计算
+- 读取保持寄存器（功能码 03）请求帧生成
+- Modbus响应帧解析
+- 异常响应处理
+- CRC错误检测
+
+
+支持：
+
+- 从站地址校验
+- 功能码校验
+- 数据长度校验
+- CRC校验
+
+
+---
+
+## 2. Modbus RTU接收缓冲处理
+
+针对串口通信存在的数据分包、粘包问题，实现接收缓存机制。
+
+新增：
+
+- Modbus接收缓冲区
+- 完整响应帧提取
+- CRC校验后确认有效数据
+
+
+通过模拟响应测试验证：
+
+请求：
+
+```
+01 03 00 00 00 03 05 CB
+```
+
+模拟响应：
+
+```
+01 03 06 01 00 00 DC 00 01 20 9E
+```
+
+
+解析结果：
+
+```
+寄存器:
+256
+220
+1
+```
+
+
+转换设备数据：
+
+```
+温度:25.6℃
+电压:220V
+在线:true
+```
+
+
+---
+
+# 二、Modbus RTU设备轮询机制
+
+完善 DeviceManager 中 Modbus RTU轮询逻辑。
+
+
+实现：
+
+- 根据设备列表动态获取设备ID
+- 自动轮询设备
+- 请求状态管理
+- 响应等待机制
+- 请求超时处理
+
+
+支持：
+
+```
+Device1
+ ↓
+读取寄存器
+
+Device2
+ ↓
+读取寄存器
+
+Device3
+ ↓
+读取寄存器
+```
+
+
+不再固定设备编号，实现设备动态增删后的轮询。
+
+
+---
+
+# 三、Modbus TCP通信模块搭建
+
+新增 Modbus TCP 通信类：
+
+```
+Communication/modbustcp.h
+Communication/modbustcp.cpp
+```
+
+
+实现：
+
+- QTcpSocket TCP连接
+- TCP连接状态管理
+- 连接错误处理
+- 数据发送接口
+- 接收信号通知
+
+
+支持：
+
+- TCP连接建立
+- TCP断开
+- TCP错误处理
+
+
+---
+
+# 四、Modbus TCP协议基础实现
+
+完成 Modbus TCP请求构造。
+
+
+支持MBAP Header：
+
+```
+Transaction ID
+Protocol ID
+Length
+Unit ID
+```
+
+以及：
+
+```
+Function Code 03
+Read Holding Registers
+```
+
+
+增加：
+
+- Transaction ID记录
+- Unit ID记录
+- 请求状态管理
+
+
+---
+
+# 五、Modbus TCP接收架构设计
+
+针对TCP字节流特性，设计TCP接收缓存方案。
+
+
+由于TCP不存在天然数据帧，需要：
+
+```
+QTcpSocket
+    |
+readAll()
+    |
+m_buffer
+    |
+MBAP Length解析
+    |
+完整Modbus TCP帧
+    |
+DeviceManager
+```
+
+
+计划通过MBAP中的Length字段实现：
+
+- TCP半包处理
+- TCP粘包拆分
+- 完整响应帧提取
+
+
+---
+
+# 六、通信架构调整
+
+当前通信架构：
+
+```
+                 DeviceManager
+
+          +----------------+
+          |                |
+       ModbusRTU       ModbusTCP
+          |                |
+      SerialPort       QTcpSocket
+          |                |
+          +-------+--------+
+                  |
+            DeviceData
+                  |
+              Device
+```
+
+
+通信层负责：
+
+- 字节收发
+- 协议解析
+
+
+DeviceManager负责：
+
+- 请求管理
+- 设备映射
+- 数据转换
+- 状态更新
+
+
+实现通信层与业务层解耦。
+
+
+---
+
+# 今日测试情况
+
+已完成：
+
+✅ Modbus RTU请求生成测试
+
+✅ Modbus RTU响应解析测试
+
+✅ CRC错误检测测试
+
+✅ Modbus RTU设备轮询测试
+
+✅ Modbus RTU数据更新流程测试
+
+
+未测试：
+
+- Modbus TCP真实连接
+- TCP半包/粘包处理
+- 多线程通信模型
+
+
+---
+
+# 明日开发计划
+
+## 1. Modbus TCP通信测试
+
+由于当前无真实设备，采用模拟TCP服务器方式测试：
+
+计划：
+
+- 创建TCP模拟从站
+- 模拟MBAP响应
+- 验证TCP数据解析
+- 验证设备数据更新流程
+
+
+测试：
+
+```
+Client
+ |
+ModbusTCP
+ |
+TCP Socket
+ |
+模拟设备
+```
+
+
+---
+
+## 2. 完善TCP接收缓存
+
+实现：
+
+- MBAP长度解析
+- 多帧连续接收
+- 半包等待
+- 粘包拆分
+
+
+---
+
+## 3. 引入通信多线程
+
+优化通信架构：
+
+当前：
+
+```
+UI线程
+ |
+DeviceManager
+ |
+通信
+```
+
+
+计划：
+
+```
+UI线程
+
+    |
+DeviceManager
+
+    |
+Communication Thread
+
+    |
+SerialPort / TCP Socket
+```
+
+
+避免：
+
+- 串口阻塞UI
+- TCP等待影响界面响应
+- 大量设备轮询导致卡顿
+
+
+---
+
+## 4. 后续优化方向
+
+- Modbus RTU/TCP统一通信接口
+- 通信任务队列
+- 请求超时重试机制
+- 多设备并发管理
+- 通信日志记录
+
+
+---
+
+# 总结
+
+今日完成设备监控上位机通信层重要扩展。
+
+系统已经从：
+
+```
+模拟数据驱动
+```
+
+逐步转变为：
+
+```
+工业通信协议驱动
+```
+
+完成 Modbus RTU基础通信能力，并搭建 Modbus TCP通信框架，为后续真实设备接入和多线程通信优化提供基础。
+```
+
+---
+
+## Git Commit摘要
+
+推荐：
+
+```bash
+git add .
+git commit -m "feat: add Modbus RTU polling and Modbus TCP communication framework"
+```
+
+如果想拆分更符合工程习惯：
+
+### Commit 1
+
+```bash
+git commit -m "feat: implement Modbus RTU register communication and polling"
+```
+
+内容：
+
+- CRC16校验
+- RTU请求生成
+- 响应解析
+- 轮询设备
+- 模拟测试
+
+
+### Commit 2
+
+```bash
+git commit -m "feat: add Modbus TCP communication module"
+```
+
+内容：
+
+- QTcpSocket封装
+- TCP连接管理
+- MBAP请求构造
+- TCP响应接口
+
+
+### Commit 3（如果明天完成）
+
+```bash
+git commit -m "feat: improve Modbus TCP frame parsing and communication threading"
+```
+
+内容：
+
+- TCP缓存
+- MBAP拆包
+- 通信线程
+
+
+---
+
+今天这个节点实际上是一个比较明显的阶段：
+
+**Day1-9：上位机框架 + 数据管理 + UI + 数据库**
+
+↓
+
+**Day10：工业通信协议接入**
+
+下一阶段重点就是：
+
+**真实通信模拟 → 多线程通信 → UI美化 → 文档整理 → 简历项目包装**
+
+已经比较接近一个完整工业上位机项目的形态。
