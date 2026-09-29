@@ -96,9 +96,17 @@ bool SerialPort::sendData(const QByteArray &data)
 // 接收
 void SerialPort::readData()
 {
-    m_buffer.append(m_serialPort->readAll());
+    QByteArray data = m_serialPort->readAll();
 
+    if (data.isEmpty())
+        return;
 
+    // 向上层发送原始字节流
+    emit rawDataReceived(data);
+
+    // 保留现有自定义协议的接收处理
+    m_buffer.append(data);
+    processBuffer();
 }
 
 // 解析
@@ -173,4 +181,9 @@ void SerialPort::simulateReceive(const QByteArray &data)
 {
     m_buffer.append(data);
     processBuffer();
+}
+
+void SerialPort::simulateRawReceive(const QByteArray &data)
+{
+    emit rawDataReceived(data);
 }

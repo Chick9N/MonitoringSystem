@@ -1,9 +1,12 @@
 #include "devicemanager.h"
 #include "../Communication/protocolparser.h"
+#include "../Communication/modbusrtu.h"
 
 #include <QTimer>
 #include <QRandomGenerator>
 #include <QDebug>
+#include <algorithm>
+
 DeviceManager::DeviceManager(QObject *parent)
     : QObject(parent)
     , m_alarmManager(new AlarmManager(this))
@@ -24,6 +27,10 @@ DeviceManager::DeviceManager(QObject *parent)
         this,
         [this](const QByteArray &frame)
         {
+            // 当前不是自定义协议时，不进行解析
+            if (m_protocolType != ProtocolType::Custom)
+                return;
+
             int deviceId;
             DeviceData data;
 
@@ -38,7 +45,6 @@ DeviceManager::DeviceManager(QObject *parent)
             // 记录有效数据帧的接收时间
             m_lastReceivedTime[deviceId] =
                 QDateTime::currentDateTime();
-
 
             updateDeviceData(deviceId, data);
         }
@@ -65,10 +71,6 @@ DeviceManager::DeviceManager(QObject *parent)
         &DeviceManager::serialPortError
         );
 
-    // 验证检索串口数据流
-    qDebug() << m_serialPort->availablePorts();
-    qDebug() << m_serialPort->open("COM99");
-
     m_timeoutTimer = new QTimer(this);
 
     connect(
@@ -79,10 +81,75 @@ DeviceManager::DeviceManager(QObject *parent)
         );
 
     m_timeoutTimer->start(1000);
+
+    // Modbus
+    // 接收 Modbus RTU 原始数据
+    connect(
+        m_serialPort,
+        &SerialPort::rawDataReceived,
+        this,
+        &DeviceManager::handleModbusRawData
+        );
+
+    // Modbus 请求超时定时器
+    m_modbusTimeoutTimer = new QTimer(this);
+    m_modbusTimeoutTimer->setSingleShot(true);
+
+    connect(
+        m_modbusTimeoutTimer,
+        &QTimer::timeout,
+        this,
+        [this]()
+        {
+            if (!m_modbusRequestPending)
+                return;
+
+            qWarning() << "Modbus RTU 请求超时:"
+                       << "从站地址:" << m_expectedSlave;
+
+            // 结束当前请求
+            m_modbusRequestPending = false;
+
+            // 清理未完成的响应数据
+            m_modbusBuffer.clear();
+        }
+        );
+
+    // 轮询
+    m_modbusPollTimer = new QTimer(this);
+
+    // Modbus 动态轮询
+    m_modbusPollTimer = new QTimer(this);
+
+    connect(m_modbusPollTimer,
+            &QTimer::timeout,
+            this,
+            &DeviceManager::pollNextDevice);
+
+    m_modbusPollTimer->start(1000);
+
+    // 测试
+    /*
+    setProtocolType(ProtocolType::ModbusRTU);
+    setDataSource(DataSource::Serial);
+
+    QByteArray response = QByteArray::fromHex(
+        "010306010000DC0001"
+        );
+
+    quint16 crc = ModbusRTU::calculateCRC(response);
+
+    response.append(static_cast<char>(crc & 0xFF));
+    response.append(static_cast<char>((crc >> 8) & 0xFF));
+
+    simulateModbusResponse(response);
+    */
+
 }
 
-void DeviceManager::addDevice(Device *device){
-    if(!device)
+void DeviceManager::addDevice(Device *device)
+{
+    if (!device)
         return;
 
     if (getDevice(device->id()))
@@ -93,15 +160,53 @@ void DeviceManager::addDevice(Device *device){
     connect(device,
             &Device::dataUpdated,
             this,
-            [this,device](const DeviceData &data){
+            [this, device](const DeviceData &data) {
                 qDebug() << "DeviceManager 转发数据:"
                          << device->id()
                          << data.temperature
                          << data.voltage
                          << data.isOnline;
 
-                emit deviceDataUpdated(device->id(),data);
+                emit deviceDataUpdated(device->id(), data);
             });
+
+    refreshPollDeviceIds();
+
+    emit deviceAdded(device->id());
+}
+
+void DeviceManager::removeDevice(int deviceId)
+{
+    Device* device = getDevice(deviceId);
+
+    if (!device) {
+        return;
+    }
+
+    // 如果当前正在等待该设备的响应，取消请求
+    if (m_modbusRequestPending &&
+        m_expectedSlave == static_cast<quint8>(deviceId)) {
+        m_modbusTimeoutTimer->stop();
+        m_modbusRequestPending = false;
+        m_modbusBuffer.clear();
+    }
+
+    // 从设备列表中移除
+    m_devices.removeOne(device);
+
+    // 清理设备接收时间
+    m_lastReceivedTime.remove(deviceId);
+
+    // 断开设备信号连接
+    disconnect(device, nullptr, this, nullptr);
+
+    // 刷新轮询列表
+    refreshPollDeviceIds();
+
+    // 延迟销毁设备
+    device->deleteLater();
+
+    qDebug() << "设备已删除:" << deviceId;
 }
 
 Device* DeviceManager::getDevice(int deviceId){
@@ -134,8 +239,6 @@ void DeviceManager::updateDeviceData(
     {
         device = new Device(deviceId, this);
         addDevice(device);
-
-        emit deviceAdded(deviceId);
 
         qDebug() << "自动发现新设备:" << deviceId;
     }
@@ -218,10 +321,7 @@ DataSource DeviceManager::dataSource() const
     return m_dataSource;
 }
 
-void DeviceManager::simulateSerialData(const QByteArray &data)
-{
-    m_serialPort->simulateReceive(data);
-}
+
 
 void DeviceManager::checkDeviceTimeout()
 {
@@ -261,4 +361,349 @@ void DeviceManager::checkDeviceTimeout()
                      << deviceId;
         }
     }
+}
+
+void DeviceManager::setProtocolType(ProtocolType type)
+{
+    m_protocolType = type;
+}
+
+ProtocolType DeviceManager::protocolType() const
+{
+    return m_protocolType;
+}
+
+bool DeviceManager::requestModbusRead(
+    quint8 slaveAddress,
+    quint16 startAddress,
+    quint16 quantity)
+{
+    // 确认当前使用 Modbus RTU
+    if (m_protocolType != ProtocolType::ModbusRTU)
+        return false;
+
+    // 确认当前为串口数据源
+    if (m_dataSource != DataSource::Serial)
+        return false;
+
+    // 确认串口已打开
+    if (!m_modbusSimulationMode && !m_serialPort->isOpen())
+        return false;
+
+    // 当前请求尚未完成，不允许重复发送
+    if (m_modbusRequestPending)
+        return false;
+
+    // 构造 Modbus RTU 请求帧
+    QByteArray request =
+        ModbusRTU::buildReadHoldingRegistersRequest(
+            slaveAddress,
+            startAddress,
+            quantity
+            );
+
+    if (request.isEmpty())
+        return false;
+
+    // 记录本次请求的上下文
+    m_expectedSlave = slaveAddress;
+    m_expectedQuantity = quantity;
+    m_modbusBuffer.clear();
+    m_modbusRequestPending = true;
+
+    // 发送请求
+    if (!m_modbusSimulationMode) {
+        if (!m_serialPort->sendData(request)) {
+            m_modbusRequestPending = false;
+            m_modbusBuffer.clear();
+            return false;
+        }
+    } else {
+        qDebug() << "模拟 Modbus RTU 请求:"
+                 << request.toHex(' ');
+
+        // 延迟模拟从站响应，模拟通信过程
+        QTimer::singleShot(100, this,
+                           [this, slaveAddress, quantity]() {
+                               if (!m_modbusSimulationMode ||
+                                   !m_modbusRequestPending ||
+                                   m_expectedSlave != slaveAddress) {
+                                   return;
+                               }
+
+                               QByteArray response =
+                                   buildSimulatedModbusResponse(
+                                       slaveAddress,
+                                       quantity
+                                       );
+
+                               if (response.isEmpty())
+                                   return;
+
+                               qDebug() << "模拟从站响应:"
+                                        << response.toHex(' ');
+
+                               simulateModbusResponse(response);
+                           });
+    }
+
+    // 启动请求超时计时
+    m_modbusTimeoutTimer->start(ModbusTimeoutMs);
+
+    qDebug() << "发送 Modbus RTU 请求:"
+             << request.toHex(' ');
+
+    return true;
+}
+
+void DeviceManager::processModbusRegisters(
+    quint8 slaveAddress,
+    const QVector<quint16> &registers)
+{
+    if (!getDevice(slaveAddress)) {
+        qWarning() << "忽略已移除设备的 Modbus 响应:"
+                   << slaveAddress;
+        return;
+    }
+
+    if (registers.size() < 3) {
+        qWarning() << "Modbus register count insufficient:"
+                   << registers.size();
+        return;
+    }
+
+    DeviceData data;
+    data.temperature = registers[0] / 10.0;
+    data.voltage = registers[1];
+    data.isOnline = (registers[2] == 1);
+
+    m_lastReceivedTime[slaveAddress] = QDateTime::currentDateTime();
+
+    updateDeviceData(slaveAddress, data);
+}
+
+void DeviceManager::refreshPollDeviceIds()
+{
+    // 尽量保留当前正在等待轮询的设备
+    int currentDeviceId = -1;
+
+    if (!m_pollDeviceIds.isEmpty() &&
+        m_currentPollIndex < m_pollDeviceIds.size()) {
+        currentDeviceId = m_pollDeviceIds[m_currentPollIndex];
+    }
+
+    // 从当前设备容器重新获取 ID
+    m_pollDeviceIds.clear();
+
+    for (Device *device : m_devices) {
+        if (device)
+            m_pollDeviceIds.append(device->id());
+    }
+
+    // 排序，保证轮询顺序稳定
+    std::sort(m_pollDeviceIds.begin(),m_pollDeviceIds.end());
+
+    if (m_pollDeviceIds.isEmpty()) {
+        m_currentPollIndex = 0;
+        return;
+    }
+
+    // 如果原来的设备仍存在，继续从它开始
+    int newIndex = m_pollDeviceIds.indexOf(currentDeviceId);
+
+    if (newIndex >= 0) {
+        m_currentPollIndex = newIndex;
+    } else {
+        // 原设备已删除，确保索引有效
+        m_currentPollIndex %= m_pollDeviceIds.size();
+    }
+}
+
+void DeviceManager::pollNextDevice()
+{
+    if (m_protocolType != ProtocolType::ModbusRTU) {
+        return;
+    }
+
+    if (m_dataSource != DataSource::Serial &&
+        !m_modbusSimulationMode) {
+        return;
+    }
+
+    // 上一个请求还未完成，暂不发送新请求
+    if (m_modbusRequestPending) {
+        return;
+    }
+
+    // 真实串口模式下，检查串口状态
+    if (!m_modbusSimulationMode &&
+        !m_serialPort->isOpen()) {
+        return;
+    }
+
+    refreshPollDeviceIds();
+
+    if (m_pollDeviceIds.isEmpty())
+        return;
+
+    int deviceId = m_pollDeviceIds[m_currentPollIndex];
+
+    // 提前移动索引，避免请求失败时一直卡在同一设备
+    m_currentPollIndex =
+        (m_currentPollIndex + 1) % m_pollDeviceIds.size();
+
+    // 再次确认设备仍然存在
+    if (!getDevice(deviceId))
+        return;
+
+    bool success = requestModbusRead(
+        static_cast<quint8>(deviceId),
+        0,
+        3
+        );
+
+    if (!success) {
+        qWarning() << "Modbus 轮询请求发送失败:"
+                   << deviceId;
+    }
+}
+
+void DeviceManager::handleModbusRawData(const QByteArray &data)
+{
+    if (m_protocolType != ProtocolType::ModbusRTU)
+        return;
+
+    if (!m_modbusRequestPending)
+        return;
+
+    m_modbusBuffer.append(data);
+
+    QByteArray frame;
+
+    if (!ModbusRTU::tryExtractResponseFrame(
+            m_modbusBuffer,
+            m_expectedSlave,
+            m_expectedQuantity,
+            frame)) {
+        return;
+    }
+
+    QVector<quint16> registers;
+    QString error;
+
+    bool success =
+        ModbusRTU::parseReadHoldingRegistersResponse(
+            frame,
+            m_expectedSlave,
+            m_expectedQuantity,
+            registers,
+            error
+            );
+
+    m_modbusTimeoutTimer->stop();
+    m_modbusRequestPending = false;
+
+    if (!success) {
+        qWarning() << "Modbus RTU 响应解析失败:" << error;
+        return;
+    }
+
+    qDebug() << "Modbus RTU 响应成功:" << registers;
+
+    processModbusRegisters(m_expectedSlave, registers);
+}
+
+// 测试入口相关
+void DeviceManager::simulateSerialData(const QByteArray &data)
+{
+    m_serialPort->simulateReceive(data);
+}
+
+void DeviceManager::simulateModbusResponse(const QByteArray &data)
+{
+    if (!m_modbusSimulationMode) {
+        qWarning() << "当前未开启 Modbus 模拟模式";
+        return;
+    }
+
+    if (!m_modbusRequestPending) {
+        qWarning() << "当前没有待处理的 Modbus 请求";
+        return;
+    }
+
+    handleModbusRawData(data);
+}
+
+QByteArray DeviceManager::buildSimulatedModbusResponse(
+    quint8 slaveAddress,
+    quint16 quantity)
+{
+    if (quantity == 0 || quantity > 125)
+        return {};
+
+    // 模拟寄存器数据
+    QVector<quint16> registers;
+
+    // 不同从站使用不同的测试数据
+    switch (slaveAddress) {
+    case 1:
+        registers = {256, 220, 1};  // 25.6℃、220V、在线
+        break;
+
+    case 2:
+        registers = {315, 225, 1};  // 31.5℃、225V、在线
+        break;
+
+    case 3:
+        registers = {280, 215, 1};  // 28.0℃、215V、在线
+        break;
+
+    default:
+        registers = {300, 220, 1};
+        break;
+    }
+
+    // 补足请求的寄存器数量
+    while (registers.size() < quantity)
+        registers.append(0);
+
+    // 生成响应帧
+    QByteArray response;
+    response.append(static_cast<char>(slaveAddress));
+    response.append(static_cast<char>(0x03));
+    response.append(static_cast<char>(quantity * 2));
+
+    for (int i = 0; i < quantity; ++i) {
+        response.append(
+            static_cast<char>((registers[i] >> 8) & 0xFF)
+            );
+        response.append(
+            static_cast<char>(registers[i] & 0xFF)
+            );
+    }
+
+    // 添加 Modbus CRC，低字节在前
+    quint16 crc = ModbusRTU::calculateCRC(response);
+
+    response.append(static_cast<char>(crc & 0xFF));
+    response.append(static_cast<char>((crc >> 8) & 0xFF));
+
+    return response;
+}
+
+void DeviceManager::setModbusSimulationMode(bool enabled)
+{
+    m_modbusSimulationMode = enabled;
+
+    if (enabled) {
+        m_dataSource = DataSource::Serial;
+    }
+
+    qDebug() << "Modbus 模拟模式:"
+             << (enabled ? "开启" : "关闭");
+}
+
+void DeviceManager::setAutoModbusResponse(bool enabled)
+{
+    m_autoModbusResponse = enabled;
 }

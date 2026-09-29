@@ -4,6 +4,7 @@
 #include <qtablewidget.h>
 #include "minichartwidget.h"
 #include "serialconfigwindow.h"
+#include "../Communication/modbusrtu.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -102,48 +103,6 @@ MainWindow::MainWindow(QWidget *parent)
         &DeviceManager::deviceAdded,
         this,
         &MainWindow::addDeviceRow
-        );
-
-    // 串口测试用
-    deviceManager->setDataSource(DataSource::Serial);
-
-    QByteArray testFrame;
-
-    // 完整帧
-    testFrame.append(char(0xAA));
-    testFrame.append(char(0x01));
-    testFrame.append(char(0x20));
-    testFrame.append(char(0x00));
-    testFrame.append(char(0xDC));
-    testFrame.append(char(0x01));
-    testFrame.append(char(0x55));
-
-    deviceManager->simulateSerialData(testFrame);
-
-    // 半包
-    deviceManager->simulateSerialData(
-        QByteArray::fromHex("AA0120")
-        );
-
-    deviceManager->simulateSerialData(
-        QByteArray::fromHex("00DC0155")
-        );
-
-    // 粘包
-    deviceManager->simulateSerialData(
-        QByteArray::fromHex(
-            "AA012000DC0155"
-            "AA022200DD0155"
-            )
-        );
-
-    // 注册新设备
-    deviceManager->simulateSerialData(
-        QByteArray::fromHex("AA042000DC0155")
-        );
-
-    deviceManager->simulateSerialData(
-        QByteArray::fromHex("AA042300DC0155")
         );
 
 }
@@ -635,4 +594,39 @@ void MainWindow::addDeviceRow(int deviceId)
     m_voltageHistory[deviceId] = {};
 
     qDebug() << "MainWindow 新增设备行:" << deviceId;
+}
+
+void MainWindow::on_testBtn_clicked()
+{
+    deviceManager->setProtocolType(ProtocolType::ModbusRTU);
+    deviceManager->setModbusSimulationMode(true);
+
+    // 暂停自动轮询
+    // 如果 m_modbusPollTimer 是 DeviceManager 的 private 成员，
+    // 可在 DeviceManager 内增加专门的暂停轮询接口。
+    deviceManager->setAutoModbusResponse(false);
+
+    if (!deviceManager->getDevice(1)) {
+        deviceManager->addDevice(new Device(1, deviceManager));
+    }
+
+    if (!deviceManager->requestModbusRead(1, 0, 3)) {
+        qDebug() << "请求失败";
+        return;
+    }
+
+    QByteArray response =
+        QByteArray::fromHex("010306010000DC0001");
+
+    quint16 crc = ModbusRTU::calculateCRC(response);
+    response.append(static_cast<char>(crc & 0xFF));
+    response.append(static_cast<char>((crc >> 8) & 0xFF));
+
+    // 破坏 CRC
+    response[response.size() - 1] ^= 0xFF;
+
+    qDebug() << "注入错误 CRC 响应:"
+             << response.toHex(' ').toUpper();
+
+    deviceManager->simulateModbusResponse(response);
 }

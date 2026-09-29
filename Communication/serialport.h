@@ -32,8 +32,12 @@ public:
 
     // 测试入口
     void simulateReceive(const QByteArray &data);
+    void simulateRawReceive(const QByteArray &data);
 
 signals:
+    // 用于后续 Modbus RTU 等协议
+    void rawDataReceived(const QByteArray &data);
+    // 用于现有自定义协议解析
     void dataReceived(const QByteArray &data);
     void errorOccurred(const QString &message);
     void opened();

@@ -50,6 +50,7 @@ private slots:
     void on_serialConfigBtn_clicked();
 
     void addDeviceRow(int deviceId);
+    void on_testBtn_clicked();
 };
 
 #endif // MAINWINDOW_H

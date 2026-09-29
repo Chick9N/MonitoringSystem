@@ -39,6 +39,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/alarmmanager.h Core/alarmmanager.cpp
         Communication/protocolparser.h Communication/protocolparser.cpp
         UI/serialconfigwindow.h UI/serialconfigwindow.cpp UI/serialconfigwindow.ui
+        Communication/modbusrtu.h Communication/modbusrtu.cpp
+
 
 
     )

@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QList>
+#include <QVector>
 #include "device.h"
 #include "alarmmanager.h"
 #include "../Communication/serialport.h"
@@ -17,12 +18,19 @@ enum class DataSource
     Serial
 };
 
+enum class ProtocolType
+{
+    Custom,     // 当前自定义协议
+    ModbusRTU   // Modbus RTU
+};
+
 class DeviceManager : public QObject
 {
     Q_OBJECT
 public:
     explicit DeviceManager(QObject *parent = nullptr);
     void addDevice(Device *device);
+    void removeDevice(int deviceId);
     Device* getDevice(int deviceId);
     QList<Device*> devices() const;
     void updateDeviceData(
@@ -47,13 +55,29 @@ public:
     void closeSerialPort();
 
     bool isSerialPortOpen() const;
+    // Modbus RTU
+    // Modbus RTU 读取保持寄存器
+    bool requestModbusRead(
+        quint8 slaveAddress,
+        quint16 startAddress,
+        quint16 quantity
+        );
 
     // 信源
     void setDataSource(DataSource source);
     DataSource dataSource() const;
 
+    // 协议
+    void setProtocolType(ProtocolType type);
+    ProtocolType protocolType() const;
+
     // 测试入口
-     void simulateSerialData(const QByteArray &data);
+    void simulateSerialData(const QByteArray &data);
+    void simulateModbusResponse(const QByteArray &data);
+    void setModbusSimulationMode(bool enabled);
+
+    void setAutoModbusResponse(bool enabled);
+
 public slots:
     void updateAllDevices();
 
@@ -77,6 +101,44 @@ private:
 
     static constexpr int CommunicationTimeoutMs = 5000;
 
+    ProtocolType m_protocolType = ProtocolType::Custom;
+
+    // Modbus
+    // Modbus RTU 接收缓冲区
+    QByteArray m_modbusBuffer;
+
+    // 当前待处理请求的信息
+    quint8 m_expectedSlave = 0;
+    quint16 m_expectedQuantity = 0;
+    bool m_modbusRequestPending = false;
+
+    // Modbus 请求超时定时器
+    QTimer *m_modbusTimeoutTimer = nullptr;
+
+    // Modbus 请求超时时间（毫秒）
+    static constexpr int ModbusTimeoutMs = 3000;
+
+    void processModbusRegisters(
+        quint8 slaveAddress,
+        const QVector<quint16> &registers
+        );
+    // 轮询
+    QTimer *m_modbusPollTimer = nullptr;
+    QList<int> m_pollDeviceIds;
+    int m_currentPollIndex = 0;
+    void refreshPollDeviceIds();
+    void pollNextDevice();
+
+    bool m_modbusSimulationMode = false;
+    void handleModbusRawData(const QByteArray &data);
+
+    // 测试
+    // 从站
+    QByteArray buildSimulatedModbusResponse(
+        quint8 slaveAddress,
+        quint16 quantity
+        );
+    bool m_autoModbusResponse = true;
 private slots:
     void checkDeviceTimeout();
 };
