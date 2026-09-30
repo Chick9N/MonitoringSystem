@@ -41,6 +41,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         UI/serialconfigwindow.h UI/serialconfigwindow.cpp UI/serialconfigwindow.ui
         Communication/modbusrtu.h Communication/modbusrtu.cpp
         Communication/modbustcp.h Communication/modbustcp.cpp
+        Communication/mockmodbustcpserver.h Communication/mockmodbustcpserver.cpp
 
 
 

@@ -12,6 +12,7 @@ MainWindow::MainWindow(QWidget *parent)
     , deviceManager(new DeviceManager(this))
     , databaseManager(new DatabaseManager(this))
     , timer(new QTimer(this))
+    , m_mockServer(new MockModbusTCPServer(this))
 {
     ui->setupUi(this);
     ui->deviceTable->setRowCount(3);
@@ -104,6 +105,11 @@ MainWindow::MainWindow(QWidget *parent)
         this,
         &MainWindow::addDeviceRow
         );
+
+    // 服务器
+    if (!m_mockServer->start(1502)) {
+        qWarning() << "模拟服务器启动失败";
+    }
 
 }
 

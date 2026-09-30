@@ -103,39 +103,6 @@ DeviceManager::DeviceManager(QObject *parent)
         m_modbusTCP,
         &ModbusTCP::dataReceived,
         this,
-        [this](const QByteArray &data)
-        {
-            QVector<quint16> registers;
-            QString error;
-
-
-            if(!ModbusTCP::parseReadHoldingRegistersResponse(
-                    data,
-                    m_expectedDeviceId,
-                    m_expectedTransactionId,
-                    m_expectedQuantity,
-                    registers,
-                    error))
-            {
-                qWarning()
-                <<"Modbus TCP解析失败:"
-                <<error;
-
-                return;
-            }
-
-
-            processModbusRegisters(
-                m_expectedDeviceId,
-                registers
-                );
-        }
-        );
-
-    connect(
-        m_modbusTCP,
-        &ModbusTCP::dataReceived,
-        this,
         &DeviceManager::handleModbusTCPResponse
         );
 
@@ -176,23 +143,10 @@ DeviceManager::DeviceManager(QObject *parent)
 
     m_modbusPollTimer->start(1000);
 
+    // 服务器
+    m_modbusTCP->connectToDevice("127.0.0.1", 1502);
+
     // 测试
-    /*
-    setProtocolType(ProtocolType::ModbusRTU);
-    setDataSource(DataSource::Serial);
-
-    QByteArray response = QByteArray::fromHex(
-        "010306010000DC0001"
-        );
-
-    quint16 crc = ModbusRTU::calculateCRC(response);
-
-    response.append(static_cast<char>(crc & 0xFF));
-    response.append(static_cast<char>((crc >> 8) & 0xFF));
-
-    simulateModbusResponse(response);
-    */
-
 }
 
 void DeviceManager::addDevice(Device *device)

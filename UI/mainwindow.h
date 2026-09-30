@@ -4,6 +4,7 @@
 
 #include "../Core/devicemanager.h"
 #include "../Data/databasemanager.h"
+#include "../Communication/mockmodbustcpserver.h"
 #include "devicewidget.h"
 
 
@@ -39,6 +40,7 @@ private:
     QMap<int, QList<double>> m_temperatureHistory;
     QMap<int, QList<double>> m_voltageHistory;
     static constexpr int MaxHistoryPoints = 30;
+    MockModbusTCPServer *m_mockServer;
 
 private slots:
     void updateDeviceUI(int deviceId,const DeviceData &data);
