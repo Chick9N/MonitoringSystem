@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QList>
 #include <QVector>
+#include <QThread>
 
 enum class DataSource
 {
@@ -30,6 +31,7 @@ class DeviceManager : public QObject
     Q_OBJECT
 public:
     explicit DeviceManager(QObject *parent = nullptr);
+    ~DeviceManager();
     void addDevice(Device *device);
     void removeDevice(int deviceId);
     Device* getDevice(int deviceId);
@@ -102,6 +104,14 @@ signals:
     void serialPortClosed();
     void serialPortError(const QString &message);
     void deviceAdded(int deviceId);
+
+    void connectTCPRequested(const QString &ip, quint16 port);
+    void sendTCPReadRequest(
+        quint8 unitId,
+        quint16 startAddress,
+        quint16 quantity,
+        quint16 transactionId
+        );
 private:
     QList<Device*> m_devices; // 设备容器
     AlarmManager *m_alarmManager;
@@ -145,6 +155,7 @@ private:
         );
 
     // TCP
+    bool m_tcpConnected = false;
     ModbusTCP *m_modbusTCP;
     quint16 m_expectedTransactionId = 0;
     quint8 m_expectedUnitId = 0;
@@ -158,6 +169,9 @@ private:
 
     bool m_modbusSimulationMode = false;
     void handleModbusRawData(const QByteArray &data);
+
+    // 多线程
+    QThread *m_modbusThread = nullptr;
 
     // 测试
     // 从站

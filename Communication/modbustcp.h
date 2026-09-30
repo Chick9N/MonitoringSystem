@@ -50,6 +50,12 @@ signals:
     void disconnected();
 
     void errorOccurred(const QString &message);
+
+    void sendResult(quint16 transactionId, bool success);
+
+    void tcpConnected();
+    void tcpDisconnected();
+    void tcpError(const QString &error);
 private:
     QTcpSocket *m_socket;
     QByteArray m_buffer;
@@ -60,6 +66,7 @@ private:
 private slots:
 
     void readData();
+    void shutdown();
 };
 
 #endif // MODBUSTCP_H

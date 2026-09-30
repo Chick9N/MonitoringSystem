@@ -6,18 +6,22 @@ ModbusTCP::ModbusTCP(QObject *parent)
     : QObject(parent),
     m_socket(new QTcpSocket(this))
 {
-    connect(m_socket, &QTcpSocket::connected, this, []() {
+    connect(m_socket, &QTcpSocket::connected, this, [this]() {
         qDebug() << "Modbus TCP连接成功";
+        emit tcpConnected();
     });
 
-    connect(m_socket, &QTcpSocket::disconnected, this, []() {
+    connect(m_socket, &QTcpSocket::disconnected, this, [this]() {
         qDebug() << "Modbus TCP连接断开";
+        emit tcpDisconnected();
     });
 
     connect(m_socket, &QTcpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError) {
-                qWarning() << "Modbus TCP连接错误:"
-                           << m_socket->errorString();
+                QString error = m_socket->errorString();
+
+                qWarning() << "Modbus TCP连接错误:" << error;
+                emit tcpError(error);
             });
 
     connect(
@@ -106,6 +110,8 @@ bool ModbusTCP::sendReadHoldingRegistersRequest(
 {
     if (m_socket->state() != QAbstractSocket::ConnectedState) {
         qWarning() << "Modbus TCP尚未连接";
+
+        emit sendResult(transactionId, false);
         return false;
     }
 
@@ -120,12 +126,15 @@ bool ModbusTCP::sendReadHoldingRegistersRequest(
 
     if (bytesWritten != request.size()) {
         qWarning() << "Modbus TCP请求发送失败";
+
+        emit sendResult(transactionId, false);
         return false;
     }
 
     qDebug() << "Modbus TCP发送请求:"
              << request.toHex(' ');
 
+    emit sendResult(transactionId, true);
     return true;
 }
 
@@ -140,23 +149,18 @@ bool ModbusTCP::parseReadHoldingRegistersResponse(
     registers.clear();
     error.clear();
 
-
     // MBAP + PDU 最小长度
-
     if(response.size() < 9)
     {
         error = "Response too short";
         return false;
     }
 
-
     // Transaction ID
-
     quint16 transaction =
         (static_cast<quint8>(response[0]) << 8)
         |
         static_cast<quint8>(response[1]);
-
 
     if(transaction != expectedTransaction)
     {
@@ -164,15 +168,27 @@ bool ModbusTCP::parseReadHoldingRegistersResponse(
         return false;
     }
 
+    // MBAP Length
+    quint16 length =
+        (static_cast<quint8>(response[4]) << 8) |
+        static_cast<quint8>(response[5]);
 
+    // Length 表示 Unit ID + PDU 的长度
+    if (length != response.size() - 6) {
+        error = "MBAP length mismatch";
+        return false;
+    }
+
+    if (length < 3 || length > 254) {
+        error = "Invalid MBAP length";
+        return false;
+    }
 
     // Protocol ID
-
     quint16 protocol =
         (static_cast<quint8>(response[2]) << 8)
         |
         static_cast<quint8>(response[3]);
-
 
     if(protocol != 0)
     {
@@ -180,13 +196,9 @@ bool ModbusTCP::parseReadHoldingRegistersResponse(
         return false;
     }
 
-
-
     // Unit ID
-
     quint8 unit =
         static_cast<quint8>(response[6]);
-
 
     if(unit != expectedUnit)
     {
@@ -194,27 +206,57 @@ bool ModbusTCP::parseReadHoldingRegistersResponse(
         return false;
     }
 
-
-
     // 功能码
-
     quint8 function =
         static_cast<quint8>(response[7]);
 
+    // Modbus 异常响应的功能码为请求功能码 | 0x80
+    if (function == 0x83)
+    {
+        if (length != 3 || response.size() != 9) {
+            error = "Invalid exception response length";
+            return false;
+        }
 
-    if(function != 0x03)
+        quint8 exceptionCode =
+            static_cast<quint8>(response[8]);
+
+        QString exceptionMessage;
+
+        switch (exceptionCode) {
+        case 0x01:
+            exceptionMessage = "Illegal function";
+            break;
+        case 0x02:
+            exceptionMessage = "Illegal data address";
+            break;
+        case 0x03:
+            exceptionMessage = "Illegal data value";
+            break;
+        case 0x04:
+            exceptionMessage = "Server device failure";
+            break;
+        default:
+            exceptionMessage = "Unknown exception";
+            break;
+        }
+
+        error = QString("Modbus exception 0x%1: %2")
+                    .arg(exceptionCode, 2, 16, QLatin1Char('0'))
+                    .arg(exceptionMessage);
+
+        return false;
+    }
+
+    if (function != 0x03)
     {
         error = "Function mismatch";
         return false;
     }
 
-
-
     // 字节数量
-
     quint8 byteCount =
         static_cast<quint8>(response[8]);
-
 
     if(byteCount != expectedQuantity * 2)
     {
@@ -222,14 +264,11 @@ bool ModbusTCP::parseReadHoldingRegistersResponse(
         return false;
     }
 
-
-
     if(response.size() != 9 + byteCount)
     {
         error = "Length mismatch";
         return false;
     }
-
 
 
     // 数据解析
@@ -336,4 +375,15 @@ bool ModbusTCP::tryExtractFrame(
 
 
     return true;
+}
+
+void ModbusTCP::shutdown()
+{
+    if (m_socket) {
+        m_socket->disconnectFromHost();
+
+        if (m_socket->state() != QAbstractSocket::UnconnectedState) {
+            m_socket->close();
+        }
+    }
 }

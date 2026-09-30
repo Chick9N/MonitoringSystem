@@ -11,7 +11,11 @@ DeviceManager::DeviceManager(QObject *parent)
     : QObject(parent)
     , m_alarmManager(new AlarmManager(this))
     , m_serialPort(new SerialPort(this))
-    , m_modbusTCP(new ModbusTCP(this))
+    , m_modbusThread(new QThread(this))
+    , m_tcpTimeoutTimer(new QTimer(this))
+    , m_modbusTCP(new ModbusTCP())
+// 这里不能给 ModbusTCP 设置 DeviceManager 为 parent，
+// 否则 QObject 不允许将有父对象的实例移动到其他线程。
 {
     // 转发信号
     connect(
@@ -92,20 +96,6 @@ DeviceManager::DeviceManager(QObject *parent)
         &DeviceManager::handleModbusRawData
         );
 
-    connect(
-        m_modbusTCP,
-        &ModbusTCP::rawDataReceived,
-        this,
-        &DeviceManager::handleModbusTCPResponse
-        );
-
-    connect(
-        m_modbusTCP,
-        &ModbusTCP::dataReceived,
-        this,
-        &DeviceManager::handleModbusTCPResponse
-        );
-
     // Modbus 请求超时定时器
     m_modbusTimeoutTimer = new QTimer(this);
     m_modbusTimeoutTimer->setSingleShot(true);
@@ -144,9 +134,109 @@ DeviceManager::DeviceManager(QObject *parent)
     m_modbusPollTimer->start(1000);
 
     // 服务器
-    m_modbusTCP->connectToDevice("127.0.0.1", 1502);
+    // 多线程
+    // 将通信对象移入工作线程
+    m_modbusTCP->moveToThread(m_modbusThread);
+
+
+    // 连接请求信号，使用队列连接
+    connect(this, &DeviceManager::connectTCPRequested,
+            m_modbusTCP, &ModbusTCP::connectToDevice,
+            Qt::QueuedConnection);
+
+    // 接收完整响应帧，返回主线程处理
+    connect(m_modbusTCP, &ModbusTCP::dataReceived,
+            this, &DeviceManager::handleModbusTCPResponse,
+            Qt::QueuedConnection);
+
+    connect(m_modbusThread, &QThread::finished,
+            m_modbusTCP, &QObject::deleteLater);
+
+    connect(this, &DeviceManager::sendTCPReadRequest,
+            m_modbusTCP, &ModbusTCP::sendReadHoldingRegistersRequest,
+            Qt::QueuedConnection);
+
+    // 工作线程将实际发送结果通知主线程，主线程再更新请求状态。
+    connect(m_modbusTCP, &ModbusTCP::sendResult,
+            this, [this](quint16 transactionId, bool success)
+            {
+                // 忽略非当前请求的发送结果
+                if (!m_tcpRequestPending ||
+                    transactionId != m_tcpExpectedTransactionId) {
+                    return;
+                }
+
+                if (!success)
+                {
+                    // 发送失败时同步停止计时器
+                    m_tcpTimeoutTimer->stop();
+                    m_tcpRequestPending  = false;
+                    qDebug() << "Modbus TCP 请求发送失败:"
+                             << transactionId;
+                }
+            }, Qt::QueuedConnection);
+
+    connect(m_modbusTCP, &ModbusTCP::tcpConnected,
+            this, [this]() {
+                m_tcpConnected = true;
+                qDebug() << "主线程：Modbus TCP已连接";
+            }, Qt::QueuedConnection);
+
+    connect(m_modbusTCP, &ModbusTCP::tcpDisconnected,
+            this, [this]()
+            {
+                qDebug() << "Modbus TCP连接已断开";
+
+                m_tcpConnected = false;
+
+                // 清理TCP请求状态
+                m_tcpTimeoutTimer->stop();
+                m_tcpRequestPending = false;
+            });
+
+    connect(m_modbusTCP, &ModbusTCP::tcpError,
+            this, [](const QString &error) {
+                qWarning() << "主线程：Modbus TCP错误:" << error;
+            }, Qt::QueuedConnection);
+
+    m_tcpTimeoutTimer->setSingleShot(true);
+
+    connect(m_tcpTimeoutTimer, &QTimer::timeout,
+            this, [this]() {
+                if (!m_tcpRequestPending)
+                    return;
+
+                qWarning() << "Modbus TCP请求超时:"
+                           << m_tcpExpectedTransactionId;
+
+                m_tcpRequestPending = false;
+            });
+
+    // 启动工作线程
+    m_modbusThread->start();
+
+    // 通过信号请求连接，不再直接调用
+    emit connectTCPRequested("127.0.0.1", 1502);
 
     // 测试
+}
+
+DeviceManager::~DeviceManager()
+{
+    if (m_modbusThread && m_modbusThread->isRunning()) {
+        // 在工作线程中关闭 socket
+        QMetaObject::invokeMethod(
+            m_modbusTCP,
+            "shutdown",
+            Qt::BlockingQueuedConnection
+            );
+
+        // 结束线程事件循环
+        m_modbusThread->quit();
+
+        // 等待线程真正结束
+        m_modbusThread->wait();
+    }
 }
 
 void DeviceManager::addDevice(Device *device)
@@ -185,12 +275,19 @@ void DeviceManager::removeDevice(int deviceId)
         return;
     }
 
-    // 如果当前正在等待该设备的响应，取消请求
+    // 如果当前正在等待该设备的RTU响应，取消请求
     if (m_modbusRequestPending &&
         m_expectedDeviceId == static_cast<quint8>(deviceId)) {
         m_modbusTimeoutTimer->stop();
         m_modbusRequestPending = false;
         m_modbusBuffer.clear();
+    }
+
+    // 如果当前正在等待该设备的TCP响应，取消请求
+    if (m_tcpRequestPending &&
+        m_tcpExpectedUnitId == static_cast<quint8>(deviceId)) {
+        m_tcpTimeoutTimer->stop();
+        m_tcpRequestPending = false;
     }
 
     // 从设备列表中移除
@@ -548,12 +645,16 @@ void DeviceManager::pollNextDevice()
     }
 
 
-    // 上一次请求未完成
-    if (m_modbusRequestPending)
-    {
+    // 根据当前协议检查对应的请求状态
+    if (m_protocolType == ProtocolType::ModbusRTU &&
+        m_modbusRequestPending) {
         return;
     }
 
+    if (m_protocolType == ProtocolType::ModbusTCP &&
+        m_tcpRequestPending) {
+        return;
+    }
 
     // RTU需要检查串口
     if (m_protocolType == ProtocolType::ModbusRTU)
@@ -565,6 +666,12 @@ void DeviceManager::pollNextDevice()
         }
     }
 
+    // TCP需要检查连接状态
+    if (m_protocolType == ProtocolType::ModbusTCP &&
+        !m_tcpConnected)
+    {
+        return;
+    }
 
     refreshPollDeviceIds();
 
@@ -731,62 +838,60 @@ void DeviceManager::handleModbusRTUResponse(
         );
 }
 
-void DeviceManager::handleModbusTCPResponse(
-    const QByteArray &data)
+void DeviceManager::handleModbusTCPResponse(const QByteArray &data)
 {
-    if(!m_modbusRequestPending)
+    if (!m_tcpRequestPending)
         return;
 
-
-    QVector<quint16> registers;
-
-    QString error;
-
-
-    bool ok =
-        ModbusTCP::parseReadHoldingRegistersResponse(
-            data,
-            m_expectedUnitId,
-            m_expectedTransactionId,
-            m_expectedQuantity,
-            registers,
-            error
-            );
-
-
-    m_modbusRequestPending=false;
-
-
-    if(!ok)
-    {
-        qWarning()
-        <<"Modbus TCP解析失败:"
-        <<error;
-
+    if (data.size() < 2) {
+        qWarning() << "Modbus TCP响应过短";
         return;
     }
 
+    quint16 transactionId =
+        (static_cast<quint8>(data[0]) << 8) |
+        static_cast<quint8>(data[1]);
 
-    qDebug()
-        <<"Modbus TCP响应成功:"
-        <<registers;
+    // 事务ID不匹配，不结束当前请求
+    if (transactionId != m_tcpExpectedTransactionId) {
+        qWarning() << "收到非当前请求的响应:" << transactionId;
+        return;
+    }
 
+    QVector<quint16> registers;
+    QString error;
 
-    processModbusRegisters(
-        m_expectedUnitId,
-        registers
+    bool ok = ModbusTCP::parseReadHoldingRegistersResponse(
+        data,
+        m_tcpExpectedUnitId,
+        m_tcpExpectedTransactionId,
+        m_tcpExpectedQuantity,
+        registers,
+        error
         );
+
+    // 收到对应事务的响应后，结束本次等待
+    m_tcpTimeoutTimer->stop();
+    m_tcpRequestPending = false;
+
+    if (!ok) {
+        qWarning() << "Modbus TCP解析失败:" << error;
+        return;
+    }
+
+    qDebug() << "Modbus TCP响应成功:" << registers;
+
+    processModbusRegisters(m_tcpExpectedUnitId, registers);
 }
 
 bool DeviceManager::connectModbusTCP(
     const QString &ip,
     quint16 port)
 {
-    m_modbusTCP->connectToDevice(
-        ip,
-        port
-        );
+    if (!m_modbusThread || !m_modbusThread->isRunning())
+        return false;
 
+    emit connectTCPRequested(ip, port);
     return true;
 }
 
@@ -795,35 +900,36 @@ bool DeviceManager::requestModbusTCPRead(
     quint16 startAddress,
     quint16 quantity)
 {
+    if (!m_tcpConnected) {
+        qDebug() << "Modbus TCP未连接，跳过读取请求";
+        return false;
+    }
+
+    if (m_tcpRequestPending)
+        return false;
 
     static quint16 transactionId = 0;
-
     transactionId++;
-
 
     // 保存当前请求上下文
     m_expectedTransactionId = transactionId;
     m_expectedUnitId = unitId;
     m_expectedQuantity = quantity;
 
-    m_modbusRequestPending = true;
+    m_tcpRequestPending = true;
 
-    bool success =
-        m_modbusTCP->sendReadHoldingRegistersRequest(
-            transactionId,
-            unitId,
-            startAddress,
-            quantity
-            );
+    // 将请求投递到 ModbusTCP 所属线程
+    emit sendTCPReadRequest(
+        transactionId,
+        unitId,
+        startAddress,
+        quantity
+        );
 
+    // 启动超时计时器
+    m_tcpTimeoutTimer->start(3000);
 
-    if(!success)
-    {
-        m_modbusRequestPending=false;
-    }
-
-
-    return success;
+    return true;
 }
 
 // 测试入口相关
