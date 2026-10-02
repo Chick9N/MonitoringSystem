@@ -201,6 +201,13 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="addDeviceBtn">
+       <property name="text">
+        <string>添加设备</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="verticalSpacer">
        <property name="orientation">
         <enum>Qt::Orientation::Vertical</enum>

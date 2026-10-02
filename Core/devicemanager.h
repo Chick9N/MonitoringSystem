@@ -5,6 +5,7 @@
 #include "alarmmanager.h"
 #include "../Communication/serialport.h"
 #include "../Communication/modbustcp.h"
+#include "../Core/deviceconfig.h"
 #include <QDateTime>
 #include <QMap>
 #include <QTimer>
@@ -12,19 +13,6 @@
 #include <QList>
 #include <QVector>
 #include <QThread>
-
-enum class DataSource
-{
-    Simulation,
-    Serial
-};
-
-enum class ProtocolType
-{
-    Custom,     // 当前自定义协议
-    ModbusRTU,   // Modbus RTU
-    ModbusTCP
-};
 
 class DeviceManager : public QObject
 {
@@ -63,7 +51,8 @@ public:
     bool requestModbusRead(
         quint8 slaveAddress,
         quint16 startAddress,
-        quint16 quantity
+        quint16 quantity,
+        int applicationDeviceId
         );
 
     // Modbus TCP
@@ -75,7 +64,9 @@ public:
     bool requestModbusTCPRead(
         quint8 unitId,
         quint16 startAddress,
-        quint16 quantity);
+        quint16 quantity,
+        int applicationDeviceId
+        );
 
     // 信源
     void setDataSource(DataSource source);
@@ -96,6 +87,8 @@ public slots:
     void updateAllDevices();
 
 signals:
+    void deviceRemoved(int deviceId);
+
     void deviceDataUpdated(int deviceId,const DeviceData &data);
     void alarmTriggered(const AlarmInfo &alarm);
 
@@ -138,6 +131,9 @@ private:
     // Modbus RTU 接收缓冲区
     QByteArray m_modbusBuffer;
 
+    // 当前 RTU 请求对应的应用层设备 ID
+    int m_expectedApplicationDeviceId = -1;
+
     // 当前待处理请求的信息
     quint8 m_expectedDeviceId = 0;
     quint16 m_expectedQuantity = 0;
@@ -150,15 +146,24 @@ private:
     static constexpr int ModbusTimeoutMs = 3000;
 
     void processModbusRegisters(
-        quint8 slaveAddress,
-        const QVector<quint16> &registers
-        );
+        int applicationDeviceId,
+        const QVector<quint16> &registers);
 
     // TCP
     bool m_tcpConnected = false;
     ModbusTCP *m_modbusTCP;
-    quint16 m_expectedTransactionId = 0;
-    quint8 m_expectedUnitId = 0;
+
+    // Modbus TCP 请求状态
+    bool m_tcpRequestPending = false;
+    quint16 m_tcpExpectedTransactionId = 0;
+    quint8 m_tcpExpectedUnitId = 0;
+    quint16 m_tcpExpectedQuantity = 0;
+
+    // 当前 TCP 请求对应的应用层设备 ID
+    int m_tcpExpectedApplicationDeviceId = -1;
+
+    // 超时
+    QTimer *m_tcpTimeoutTimer = nullptr;
 
     // 轮询
     QTimer *m_modbusPollTimer = nullptr;

@@ -5,6 +5,9 @@
 #include "minichartwidget.h"
 #include "serialconfigwindow.h"
 #include "../Communication/modbusrtu.h"
+#include <QPushButton>
+#include "adddevicedialog.h"
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -15,54 +18,29 @@ MainWindow::MainWindow(QWidget *parent)
     , m_mockServer(new MockModbusTCPServer(this))
 {
     ui->setupUi(this);
-    ui->deviceTable->setRowCount(3);
-    ui->deviceTable->setColumnCount(6);
-    ui->deviceTable->horizontalHeader()->setSectionResizeMode(
-        4, QHeaderView::Stretch);
-    ui->deviceTable->setHorizontalHeaderLabels({"设备ID","状态","温度","电压","温度走势图","电压走势图"});
-    ui->deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            0,
-            QHeaderView::ResizeToContents
-            );
+    ui->deviceTable->setColumnCount(9);
+    ui->deviceTable->setHorizontalHeaderLabels({
+        "设备ID",
+        "来源",
+        "协议",
+        "状态",
+        "温度",
+        "电压",
+        "温度走势图",
+        "电压走势图",
+        "操作"
+    });
+    auto *header = ui->deviceTable->horizontalHeader();
+    header->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    header->setSectionResizeMode(6, QHeaderView::Stretch);
+    header->setSectionResizeMode(7, QHeaderView::Stretch);
+    header->setSectionResizeMode(8, QHeaderView::ResizeToContents);
 
-    ui->deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            1,
-            QHeaderView::ResizeToContents
-            );
-
-    ui->deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            2,
-            QHeaderView::ResizeToContents
-            );
-
-    ui->deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            3,
-            QHeaderView::ResizeToContents
-            );
-
-    ui->deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            4,
-            QHeaderView::Stretch
-            );
-
-    ui->deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            5,
-            QHeaderView::Stretch
-            );
-
-    Device *device1 = new Device(1,this);
-    Device *device2 = new Device(2,this);
-    Device *device3 = new Device(3,this);
-    // 一定使用add方法添加设备 add方法内部构造信号槽
-    deviceManager->addDevice(device1);
-    deviceManager->addDevice(device2);
-    deviceManager->addDevice(device3);
     // DeviceManager 数据更新 -> MainWindow
     connect(deviceManager,
             &DeviceManager::deviceDataUpdated,
@@ -76,6 +54,13 @@ MainWindow::MainWindow(QWidget *parent)
             &DeviceManager::updateAllDevices);
 
     timer->start(1000);
+
+    connect(
+        deviceManager,
+        &DeviceManager::deviceRemoved,
+        this,
+        &MainWindow::removeDeviceRow
+        );
 
     // 数据库
     databaseManager->openDatabase();
@@ -113,6 +98,49 @@ MainWindow::MainWindow(QWidget *parent)
 
 }
 
+void MainWindow::removeDeviceRow(int deviceId)
+{
+
+    if(!m_deviceRowMap.contains(deviceId))
+        return;
+
+
+    int row =
+        m_deviceRowMap[deviceId];
+
+
+    ui->deviceTable->removeRow(row);
+
+
+    m_deviceRowMap.remove(deviceId);
+
+
+
+    // 重新整理行号
+
+    for(auto it=m_deviceRowMap.begin();
+         it!=m_deviceRowMap.end();
+         ++it)
+    {
+
+        if(it.value()>row)
+        {
+            it.value()--;
+        }
+
+    }
+
+
+    m_temperatureHistory.remove(deviceId);
+    m_voltageHistory.remove(deviceId);
+
+
+    qDebug()
+        <<"删除设备UI:"
+        <<deviceId;
+
+}
+
 void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
 {
     qDebug() << "MainWindow 收到数据:"
@@ -121,116 +149,173 @@ void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
              << data.voltage
              << data.isOnline;
 
-    int row = deviceId - 1;
+    if (!m_deviceRowMap.contains(deviceId))
+    {
+        qWarning() << "设备不存在表格:" << deviceId;
+        return;
+    }
+
+    int row = m_deviceRowMap[deviceId];
 
     ui->deviceTable->setRowHeight(row, 120);
 
+    // 设备ID
     ui->deviceTable->setItem(
         row, 0,
         new QTableWidgetItem(QString::number(deviceId))
         );
 
+    // 获取设备配置
+    Device *device = deviceManager->getDevice(deviceId);
+
+    QString sourceName = "--";
+    QString protocolName = "--";
+
+    if (device)
+    {
+        const DeviceConfig &config = device->config();
+
+        // 设备名称作为 ID 单元格的悬停提示
+        QTableWidgetItem *idItem = ui->deviceTable->item(row, 0);
+        if (idItem)
+        {
+            idItem->setToolTip(config.deviceName);
+        }
+
+        // 协议类型
+        switch (config.protocolType)
+        {
+        case ProtocolType::Custom:
+            protocolName = "自定义串口";
+            break;
+
+        case ProtocolType::ModbusRTU:
+            protocolName = "Modbus RTU";
+            break;
+
+        case ProtocolType::ModbusTCP:
+            protocolName = "Modbus TCP";
+            break;
+        }
+    }
+
+    // 数据来源：读取设备独立配置
+    if (device)
+    {
+        switch (device->config().dataSource)
+        {
+        case DataSource::Simulation:
+            sourceName = "模拟数据";
+            break;
+
+        case DataSource::Serial:
+            sourceName = "串口";
+            break;
+
+        case DataSource::TCP:
+            sourceName = "TCP";
+            break;
+        }
+    }
+
+    // 更新来源和协议列
     ui->deviceTable->setItem(
         row, 1,
-        new QTableWidgetItem(
-            data.isOnline ? "在线" : "离线"
-            )
+        new QTableWidgetItem(sourceName)
         );
 
+    ui->deviceTable->setItem(
+        row, 2,
+        new QTableWidgetItem(protocolName)
+        );
+
+    // 状态
+    ui->deviceTable->setItem(
+        row, 3,
+        new QTableWidgetItem(data.isOnline ? "在线" : "离线")
+        );
+
+    // 获取温度曲线控件
     MiniChartWidget *temperatureChart =
         qobject_cast<MiniChartWidget*>(
-            ui->deviceTable->cellWidget(row, 4)
+            ui->deviceTable->cellWidget(row, 6)
             );
 
     if (!temperatureChart)
     {
-        temperatureChart =
-            new MiniChartWidget(
-                ChartType::Temperature
-                );
+        temperatureChart = new MiniChartWidget(
+            ChartType::Temperature
+            );
 
         ui->deviceTable->setCellWidget(
-            row,
-            4,
-            temperatureChart
+            row, 6, temperatureChart
             );
     }
 
+    // 获取电压曲线控件
     MiniChartWidget *voltageChart =
         qobject_cast<MiniChartWidget*>(
-            ui->deviceTable->cellWidget(row, 5)
+            ui->deviceTable->cellWidget(row, 7)
             );
 
     if (!voltageChart)
     {
-        voltageChart =
-            new MiniChartWidget(
-                ChartType::Voltage
-                );
+        voltageChart = new MiniChartWidget(
+            ChartType::Voltage
+            );
 
         ui->deviceTable->setCellWidget(
-            row,
-            5,
-            voltageChart
+            row, 7, voltageChart
             );
     }
 
     if (data.isOnline)
     {
+        // 温度
         ui->deviceTable->setItem(
-            row, 2,
+            row, 4,
             new QTableWidgetItem(
                 QString::number(data.temperature, 'f', 1)
                 )
             );
 
+        // 电压
         ui->deviceTable->setItem(
-            row, 3,
+            row, 5,
             new QTableWidgetItem(
                 QString::number(data.voltage, 'f', 1)
                 )
             );
 
         // 保存历史数据
-        m_temperatureHistory[deviceId].append(
-            data.temperature
-            );
+        m_temperatureHistory[deviceId].append(data.temperature);
+        m_voltageHistory[deviceId].append(data.voltage);
 
-        m_voltageHistory[deviceId].append(
-            data.voltage
-            );
-
-        // 限制长度
-        if (m_temperatureHistory[deviceId].size()
-            > MaxHistoryPoints)
+        // 限制历史数据长度
+        if (m_temperatureHistory[deviceId].size() > MaxHistoryPoints)
         {
             m_temperatureHistory[deviceId].removeFirst();
         }
 
-        if (m_voltageHistory[deviceId].size()
-            > MaxHistoryPoints)
+        if (m_voltageHistory[deviceId].size() > MaxHistoryPoints)
         {
             m_voltageHistory[deviceId].removeFirst();
         }
 
-        // 更新小图
-        temperatureChart->setData(
-            m_temperatureHistory[deviceId]
-            );
-
-        voltageChart->setData(
-            m_voltageHistory[deviceId]
-            );
+        // 更新曲线
+        temperatureChart->setData(m_temperatureHistory[deviceId]);
+        voltageChart->setData(m_voltageHistory[deviceId]);
     }
     else
     {
+        // 离线时保留状态，温度和电压显示占位符
         ui->deviceTable->setItem(
-            row, 2,
+            row, 4,
             new QTableWidgetItem("--")
             );
 
         ui->deviceTable->setItem(
-            row, 3,
+            row, 5,
             new QTableWidgetItem("--")
             );
     }
@@ -553,25 +638,78 @@ void MainWindow::addDeviceRow(int deviceId)
     }
 
     int row = ui->deviceTable->rowCount();
+    m_deviceRowMap[deviceId] = row;
     ui->deviceTable->insertRow(row);
+    ui->deviceTable->setRowHeight(row, 120);
 
     ui->deviceTable->setItem(
         row, 0,
         new QTableWidgetItem(QString::number(deviceId))
         );
 
+    Device *device = deviceManager->getDevice(deviceId);
+
+    QString sourceName = "--";
+    QString protocolName = "--";
+
+    if (device)
+    {
+        // 显示设备名称作为 ID 单元格的悬停提示
+        ui->deviceTable->item(row, 0)->setToolTip(device->name());
+
+        switch (device->protocolType())
+        {
+        case ProtocolType::Custom:
+            protocolName = "自定义串口";
+            break;
+
+        case ProtocolType::ModbusRTU:
+            protocolName = "Modbus RTU";
+            break;
+
+        case ProtocolType::ModbusTCP:
+            protocolName = "Modbus TCP";
+            break;
+        }
+    }
+
+    // 当前数据来源仍然是 DeviceManager 的全局配置
+    switch (deviceManager->dataSource())
+    {
+    case DataSource::Simulation:
+        sourceName = "模拟数据";
+        break;
+
+    case DataSource::Serial:
+        sourceName = "真实设备";
+        break;
+
+    case DataSource::TCP:
+        sourceName = "TCP";
+    }
+
     ui->deviceTable->setItem(
         row, 1,
-        new QTableWidgetItem("在线")
+        new QTableWidgetItem(sourceName)
         );
 
     ui->deviceTable->setItem(
         row, 2,
-        new QTableWidgetItem("--")
+        new QTableWidgetItem(protocolName)
         );
 
     ui->deviceTable->setItem(
         row, 3,
+        new QTableWidgetItem("离线")
+        );
+
+    ui->deviceTable->setItem(
+        row, 4,
+        new QTableWidgetItem("--")
+        );
+
+    ui->deviceTable->setItem(
+        row, 5,
         new QTableWidgetItem("--")
         );
 
@@ -588,14 +726,36 @@ void MainWindow::addDeviceRow(int deviceId)
             );
 
     ui->deviceTable->setCellWidget(
-        row, 4, temperatureChart
+        row, 6, temperatureChart
         );
 
     ui->deviceTable->setCellWidget(
-        row, 5, voltageChart
+        row, 7, voltageChart
         );
 
-    // 为新设备初始化曲线缓存
+    // 每行独立的删除确认按钮
+    auto *deleteBtn = new QPushButton("删除", ui->deviceTable);
+
+    connect(
+        deleteBtn,
+        &QPushButton::clicked,
+        this,
+        [this, deviceId, deleteBtn]()
+        {
+            if (deleteBtn->text() == "删除")
+            {
+                deleteBtn->setText("确认删除");
+                return;
+            }
+
+            deviceManager->removeDevice(deviceId);
+        }
+        );
+
+    ui->deviceTable->setCellWidget(
+        row, 8, deleteBtn
+        );
+
     m_temperatureHistory[deviceId] = {};
     m_voltageHistory[deviceId] = {};
 
@@ -604,35 +764,42 @@ void MainWindow::addDeviceRow(int deviceId)
 
 void MainWindow::on_testBtn_clicked()
 {
-    deviceManager->setProtocolType(ProtocolType::ModbusRTU);
-    deviceManager->setModbusSimulationMode(true);
 
-    // 暂停自动轮询
-    // 如果 m_modbusPollTimer 是 DeviceManager 的 private 成员，
-    // 可在 DeviceManager 内增加专门的暂停轮询接口。
-    deviceManager->setAutoModbusResponse(false);
+}
 
-    if (!deviceManager->getDevice(1)) {
-        deviceManager->addDevice(new Device(1, deviceManager));
-    }
+void MainWindow::on_addDeviceBtn_clicked()
+{
+    AddDeviceDialog dialog(this);
 
-    if (!deviceManager->requestModbusRead(1, 0, 3)) {
-        qDebug() << "请求失败";
+    if (dialog.exec() != QDialog::Accepted)
+    {
         return;
     }
 
-    QByteArray response =
-        QByteArray::fromHex("010306010000DC0001");
+    // 获取对话框配置
+    DeviceConfig config = dialog.getDeviceConfig();
 
-    quint16 crc = ModbusRTU::calculateCRC(response);
-    response.append(static_cast<char>(crc & 0xFF));
-    response.append(static_cast<char>((crc >> 8) & 0xFF));
+    // 检查设备 ID 是否重复
+    if (deviceManager->getDevice(config.deviceId))
+    {
+        QMessageBox::warning(
+            this,
+            "添加失败",
+            "该设备 ID 已存在！"
+            );
+        return;
+    }
 
-    // 破坏 CRC
-    response[response.size() - 1] ^= 0xFF;
+    // 创建设备对象，由 DeviceManager 管理其生命周期
+    Device *device = new Device(config.deviceId, deviceManager);
 
-    qDebug() << "注入错误 CRC 响应:"
-             << response.toHex(' ').toUpper();
+    device->setConfig(config);
 
-    deviceManager->simulateModbusResponse(response);
+    deviceManager->addDevice(device);
+
+    // 添加到设备管理器
+    deviceManager->addDevice(device);
+
+    qDebug() << device->name()
+             << static_cast<int>(device->protocolType());
 }

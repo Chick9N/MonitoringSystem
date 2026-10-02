@@ -3859,3 +3859,490 @@ git commit -m "feat: improve Modbus TCP frame parsing and communication threadin
 **真实通信模拟 → 多线程通信 → UI美化 → 文档整理 → 简历项目包装**
 
 已经比较接近一个完整工业上位机项目的形态。
+
+# 设备监控上位机开发日志
+
+**日期：2026年9月30日**
+
+## 一、今日开发主题
+
+今日主要围绕 **Modbus TCP 通信功能完善、多线程通信架构、TCP 请求状态管理以及后续 UI 功能规划** 展开开发。
+
+重点解决 Modbus TCP 在独立线程中的通信问题，并进一步完善 TCP 请求与 RTU 请求之间的状态隔离，为后续设备管理和系统集成测试做准备。
+
+---
+
+## 二、Modbus TCP 多线程通信改造
+
+### 1. 建立 TCP 独立工作线程
+
+将 `ModbusTCP` 通信对象移动至独立的 `QThread` 中运行，使 `QTcpSocket` 的网络通信操作与主线程中的 UI 和设备管理逻辑分离。
+
+整体结构调整为：
+
+```text
+主线程
+│
+├── MainWindow
+├── DeviceManager
+│
+└── 通过信号/槽与 TCP 工作线程通信
+          │
+          ▼
+      QThread
+          │
+          └── ModbusTCP
+                 │
+                 └── QTcpSocket
+```
+
+这样可以避免网络通信过程对 Qt 主线程造成阻塞，同时为后续长时间轮询和多设备通信提供更合理的线程结构。
+
+### 2. 使用信号/槽进行跨线程请求
+
+将原本可能直接调用 TCP 对象成员函数的方式调整为通过 Qt 信号向工作线程投递请求。
+
+通过类似：
+
+```cpp
+sendTCPReadRequest(
+    transactionId,
+    unitId,
+    startAddress,
+    quantity
+);
+```
+
+将请求从 `DeviceManager` 所在线程投递到 `ModbusTCP` 工作线程。
+
+同时要求实际执行网络操作的函数作为 Qt `slot` 或 `Q_INVOKABLE` 使用，使跨线程调用能够通过 Qt 的事件队列正确执行。
+
+### 3. TCP 数据通过信号返回主线程
+
+ModbusTCP 工作线程完成数据接收和完整 MBAP 报文解析后，通过信号将数据发送回 `DeviceManager`。
+
+通信结构调整为：
+
+```text
+DeviceManager
+      │
+      │ sendTCPReadRequest
+      ▼
+ModbusTCP 工作线程
+      │
+      │ QTcpSocket
+      ▼
+   TCP设备
+      │
+      │ Modbus TCP响应
+      ▼
+ModbusTCP
+      │
+      │ dataReceived
+      ▼
+DeviceManager
+```
+
+主线程负责设备状态和数据处理，TCP 工作线程负责 Socket 通信，从而实现通信职责与业务逻辑的分离。
+
+### 4. 完善线程退出流程
+
+对 TCP 工作线程的退出流程进行了处理。
+
+程序关闭时：
+
+1. 向 TCP 工作对象发送关闭请求。
+2. 关闭 `QTcpSocket`。
+3. 调用线程 `quit()`。
+4. 使用 `wait()` 等待线程真正结束。
+5. 通过 `finished -> deleteLater` 清理工作对象。
+
+此前出现的：
+
+```text
+QThread: Destroyed while thread is still running
+```
+
+问题已经通过调整线程退出流程得到解决，用户确认程序已经能够正常退出。
+
+---
+
+## 三、Modbus TCP 通信功能完善
+
+### 1. 增加 TCP 发送结果反馈
+
+为 TCP 请求增加发送结果反馈机制：
+
+```cpp
+sendResult(transactionId, success)
+```
+
+用于区分：
+
+- 请求是否成功写入 `QTcpSocket` 的发送缓冲区；
+- 请求发送失败。
+
+同时明确：
+
+> `write()` 成功并不代表远端设备已经收到并处理请求，只能说明数据已经成功交给本地 Socket 发送缓冲区。
+
+因此 TCP 请求仍然需要等待实际响应，并由超时机制负责处理无响应情况。
+
+### 2. 增加 TCP 连接状态反馈
+
+完善 TCP 连接状态信号：
+
+```text
+tcpConnected()
+tcpDisconnected()
+tcpError(QString)
+```
+
+由 `DeviceManager` 接收后维护 TCP 当前连接状态。
+
+引入：
+
+```cpp
+m_tcpConnected
+```
+
+用于判断当前 TCP 是否处于可通信状态。
+
+TCP 未连接时，不继续执行 TCP 轮询请求。
+
+### 3. 增加独立 TCP 超时机制
+
+将 TCP 请求超时处理从 RTU 请求中独立出来。
+
+TCP 使用：
+
+```text
+m_tcpRequestPending
+m_tcpTimeoutTimer
+m_tcpExpectedTransactionId
+m_tcpExpectedUnitId
+m_tcpExpectedQuantity
+```
+
+RTU 继续使用原有：
+
+```text
+m_modbusRequestPending
+m_modbusTimeoutTimer
+m_expectedDeviceId
+m_expectedQuantity
+```
+
+这样可以避免 RTU 和 TCP 共用请求状态导致通信相互干扰。
+
+---
+
+## 四、Modbus TCP 请求状态隔离
+
+今日进一步检查了 RTU 和 TCP 的请求生命周期。
+
+### RTU
+
+RTU 请求继续使用：
+
+```cpp
+m_modbusRequestPending
+m_modbusTimeoutTimer
+```
+
+`requestModbusRead()` 当前逻辑保持不变。
+
+其主要流程为：
+
+```text
+检查RTU协议
+      ↓
+检查串口
+      ↓
+检查是否存在未完成请求
+      ↓
+构造RTU请求帧
+      ↓
+记录请求设备
+      ↓
+发送请求
+      ↓
+启动RTU超时计时器
+```
+
+### TCP
+
+TCP 使用独立状态：
+
+```text
+m_tcpRequestPending
+m_tcpTimeoutTimer
+m_tcpExpectedTransactionId
+m_tcpExpectedUnitId
+m_tcpExpectedQuantity
+```
+
+避免 TCP 请求清理 RTU 状态，或者 RTU 请求影响 TCP 超时处理。
+
+---
+
+## 五、Modbus TCP 响应处理完善
+
+检查并调整了 `handleModbusTCPResponse()` 的处理逻辑。
+
+TCP 响应首先检查：
+
+1. 是否存在正在等待的 TCP 请求；
+2. 数据长度是否满足基本要求；
+3. Transaction ID 是否与当前请求匹配；
+4. Modbus TCP 响应报文是否能够正确解析。
+
+只有收到当前请求对应的 Transaction ID 后，才结束当前 TCP 请求等待状态。
+
+处理流程：
+
+```text
+收到TCP响应
+    ↓
+检查TCP请求状态
+    ↓
+检查Transaction ID
+    ↓
+解析Modbus TCP报文
+    ↓
+停止TCP超时计时器
+    ↓
+清除TCP请求状态
+    ↓
+处理寄存器数据
+```
+
+对于 Transaction ID 不匹配的报文，不立即清除当前请求状态，继续等待正确响应。
+
+---
+
+## 六、TCP 异常和断线处理
+
+### 1. TCP 发送失败
+
+当 TCP 请求发送失败时：
+
+```text
+停止TCP超时计时器
+      ↓
+清除m_tcpRequestPending
+      ↓
+允许后续重新发起请求
+```
+
+不会修改 RTU 请求状态。
+
+### 2. TCP 连接断开
+
+TCP 断开时：
+
+```text
+m_tcpConnected = false
+m_tcpTimeoutTimer->stop()
+m_tcpRequestPending = false
+```
+
+避免断线后仍然保持一个无效的 TCP 请求。
+
+### 3. TCP 迟到响应
+
+如果设备已经删除或者 TCP 请求已经被取消，后续收到旧请求对应的响应时，不再继续处理已经失效的请求。
+
+---
+
+## 七、轮询机制调整
+
+检查了 `pollNextDevice()`。
+
+当前已经按照通信协议分别判断请求状态：
+
+```cpp
+if (m_protocolType == ProtocolType::ModbusRTU &&
+    m_modbusRequestPending) {
+    return;
+}
+
+if (m_protocolType == ProtocolType::ModbusTCP &&
+    m_tcpRequestPending) {
+    return;
+}
+```
+
+因此 RTU 和 TCP 不再通过同一个 pending 状态进行判断。
+
+同时规划增加：
+
+```cpp
+if (m_protocolType == ProtocolType::ModbusTCP &&
+    !m_tcpConnected)
+{
+    return;
+}
+```
+
+避免 TCP 未连接时继续执行轮询请求。
+
+当前轮询架构仍然通过：
+
+```cpp
+m_protocolType
+```
+
+选择当前使用的通信协议，因此目前是 RTU/TCP 二选一的轮询模式，并不是不同设备同时使用不同通信协议进行并行轮询。
+
+---
+
+## 八、设备删除与通信状态清理
+
+检查了 `removeDevice()`。
+
+原有代码已经能够在删除正在等待 RTU 响应的设备时：
+
+- 停止 RTU 超时计时器；
+- 清除 `m_modbusRequestPending`；
+- 清空 Modbus RTU 接收缓存。
+
+进一步增加 TCP 设备删除时的状态清理方案：
+
+```text
+判断当前等待设备是否为被删除设备
+          ↓
+停止m_tcpTimeoutTimer
+          ↓
+m_tcpRequestPending = false
+```
+
+从而避免设备已经从设备列表删除，但程序仍然保持等待其 TCP 响应的状态。
+
+---
+
+# 九、当前 Modbus TCP 开发状态
+
+经过今天的开发，Modbus TCP 已经基本形成完整的通信架构：
+
+```text
+┌──────────────────────────────┐
+│          MainWindow          │
+│          主线程 UI            │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│        DeviceManager         │
+│     设备管理 / 轮询 / 数据处理 │
+└──────────────┬───────────────┘
+               │ Signal / Slot
+               ▼
+┌──────────────────────────────┐
+│        ModbusTCP Thread      │
+│        独立通信线程            │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│          QTcpSocket           │
+│          TCP通信               │
+└──────────────────────────────┘
+```
+
+目前核心通信功能已经基本具备，但**暂不进行最终集成测试**，后续仍需要在 UI、设备管理和报警功能完成后统一进行系统级验证。
+
+---
+
+# 十、下一阶段开发计划
+
+当前不立即进入全面集成测试，而是继续完善上位机功能和 UI。
+
+### 1. UI 完善
+
+- 主界面整体 UI 美化
+- 调整设备列表布局
+- 优化设备状态显示
+- 优化设备详情界面
+- 完善报警区域
+
+### 2. 设备管理功能
+
+增加：
+
+- 删除设备
+- 添加 Modbus RTU 设备
+- 添加 Modbus TCP 设备
+- 完善设备配置入口
+- 显示设备通信来源
+
+设备来源需要能够明确区分：
+
+```text
+自定义串口
+Modbus RTU
+Modbus TCP
+```
+
+### 3. 报警功能
+
+完善：
+
+- 报警状态显示
+- 报警界面闪烁
+- 异常设备提示
+- 温度、电压等数据异常提示
+- 报警解除后的状态恢复
+
+### 4. 最终集成测试
+
+以上功能完成后，再统一进行：
+
+- 自定义串口通信测试
+- Modbus RTU 通信测试
+- Modbus TCP 通信测试
+- 设备添加/删除测试
+- 多设备轮询测试
+- TCP断线测试
+- RTU超时测试
+- TCP超时测试
+- 异常响应测试
+- 报警功能测试
+- 多线程退出测试
+- 长时间运行稳定性测试
+
+---
+
+# 十一、今日开发总结
+
+今日开发重点由单纯的 Modbus TCP 功能实现，进一步进入了**通信架构完善阶段**。
+
+主要完成和推进了：
+
+1. Modbus TCP 独立线程通信架构；
+2. TCP 请求通过信号/槽进行跨线程调度；
+3. TCP 数据接收后的跨线程回传；
+4. TCP 工作线程安全退出；
+5. TCP 发送结果反馈；
+6. TCP 连接状态反馈；
+7. TCP 独立超时机制；
+8. TCP 与 RTU 请求状态隔离；
+9. TCP Transaction ID 校验；
+10. TCP 断线及发送失败状态清理；
+11. TCP 设备删除时的请求状态清理；
+12. `pollNextDevice()` 的 RTU/TCP 请求状态区分；
+13. 明确后续 UI、设备管理和报警功能开发顺序；
+14. 明确在主要功能完成后统一开展系统集成测试。
+
+下一阶段重点从**通信底层开发**逐步转向**设备管理、UI 和用户交互功能完善**。
+
+---
+
+## Git Commit
+
+```bash
+git add .
+git commit -m "完善Modbus TCP多线程通信与请求状态管理"
+```
+
+如果今天你的实际代码已经把上述修改全部提交并编译通过，这个 commit 摘要比较合适；如果部分内容只是今天讨论的修改方案而尚未真正落地，建议不要把它们写成“已完成”的提交内容。

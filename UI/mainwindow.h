@@ -36,6 +36,7 @@ private:
     DeviceManager *deviceManager;
     DatabaseManager *databaseManager;
     QTimer *timer;
+    QMap<int,int> m_deviceRowMap; // 表格映射 设备ID, 表格行
     QMap<int, DeviceWidget*> m_deviceWidgets; // 判断某个设备有没有已经打开的详情窗口
     QMap<int, QList<double>> m_temperatureHistory;
     QMap<int, QList<double>> m_voltageHistory;
@@ -43,6 +44,7 @@ private:
     MockModbusTCPServer *m_mockServer;
 
 private slots:
+    void removeDeviceRow(int deviceId);
     void updateDeviceUI(int deviceId,const DeviceData &data);
     void on_startAllBtn_clicked();
     void on_stopAllBtn_clicked();
@@ -53,6 +55,7 @@ private slots:
 
     void addDeviceRow(int deviceId);
     void on_testBtn_clicked();
+    void on_addDeviceBtn_clicked();
 };
 
 #endif // MAINWINDOW_H

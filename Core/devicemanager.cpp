@@ -305,6 +305,8 @@ void DeviceManager::removeDevice(int deviceId)
     // 延迟销毁设备
     device->deleteLater();
 
+    emit deviceRemoved(deviceId);
+
     qDebug() << "设备已删除:" << deviceId;
 }
 
@@ -486,12 +488,10 @@ ProtocolType DeviceManager::protocolType() const
 bool DeviceManager::requestModbusRead(
     quint8 slaveAddress,
     quint16 startAddress,
-    quint16 quantity)
+    quint16 quantity,
+    int applicationDeviceId
+    )
 {
-    // 确认当前使用 Modbus RTU
-    if (m_protocolType != ProtocolType::ModbusRTU)
-        return false;
-
     // 确认当前为串口数据源
     if (m_dataSource != DataSource::Serial)
         return false;
@@ -515,9 +515,10 @@ bool DeviceManager::requestModbusRead(
     if (request.isEmpty())
         return false;
 
-    // 记录本次请求的上下文
+    // 记录本次请求上下文
     m_expectedDeviceId = slaveAddress;
     m_expectedQuantity = quantity;
+    m_expectedApplicationDeviceId = applicationDeviceId;
     m_modbusBuffer.clear();
     m_modbusRequestPending = true;
 
@@ -532,7 +533,6 @@ bool DeviceManager::requestModbusRead(
         qDebug() << "模拟 Modbus RTU 请求:"
                  << request.toHex(' ');
 
-        // 延迟模拟从站响应，模拟通信过程
         QTimer::singleShot(100, this,
                            [this, slaveAddress, quantity]() {
                                if (!m_modbusSimulationMode ||
@@ -567,12 +567,12 @@ bool DeviceManager::requestModbusRead(
 }
 
 void DeviceManager::processModbusRegisters(
-    quint8 slaveAddress,
+    int applicationDeviceId,
     const QVector<quint16> &registers)
 {
-    if (!getDevice(slaveAddress)) {
+    if (!getDevice(applicationDeviceId)) {
         qWarning() << "忽略已移除设备的 Modbus 响应:"
-                   << slaveAddress;
+                   << applicationDeviceId;
         return;
     }
 
@@ -587,9 +587,10 @@ void DeviceManager::processModbusRegisters(
     data.voltage = registers[1];
     data.isOnline = (registers[2] == 1);
 
-    m_lastReceivedTime[slaveAddress] = QDateTime::currentDateTime();
+    m_lastReceivedTime[applicationDeviceId] =
+        QDateTime::currentDateTime();
 
-    updateDeviceData(slaveAddress, data);
+    updateDeviceData(applicationDeviceId, data);
 }
 
 void DeviceManager::refreshPollDeviceIds()
@@ -631,140 +632,118 @@ void DeviceManager::refreshPollDeviceIds()
 
 void DeviceManager::pollNextDevice()
 {
-    if (m_protocolType != ProtocolType::ModbusRTU &&
-        m_protocolType != ProtocolType::ModbusTCP)
-    {
-        return;
-    }
-
-
-    if (m_dataSource != DataSource::Serial &&
-        !m_modbusSimulationMode)
-    {
-        return;
-    }
-
-
-    // 根据当前协议检查对应的请求状态
-    if (m_protocolType == ProtocolType::ModbusRTU &&
-        m_modbusRequestPending) {
-        return;
-    }
-
-    if (m_protocolType == ProtocolType::ModbusTCP &&
-        m_tcpRequestPending) {
-        return;
-    }
-
-    // RTU需要检查串口
-    if (m_protocolType == ProtocolType::ModbusRTU)
-    {
-        if (!m_modbusSimulationMode &&
-            !m_serialPort->isOpen())
-        {
-            return;
-        }
-    }
-
-    // TCP需要检查连接状态
-    if (m_protocolType == ProtocolType::ModbusTCP &&
-        !m_tcpConnected)
-    {
-        return;
-    }
-
     refreshPollDeviceIds();
-
 
     if (m_pollDeviceIds.isEmpty())
         return;
 
-
-
-    int deviceId =
-        m_pollDeviceIds[m_currentPollIndex];
-
-
-    m_currentPollIndex =
-        (m_currentPollIndex + 1)
-        % m_pollDeviceIds.size();
-
-
-
-    if (!getDevice(deviceId))
+    // 当前全局只允许一个 RTU 或 TCP 请求待处理
+    if (m_modbusRequestPending || m_tcpRequestPending)
         return;
 
+    // 按轮询索引取得设备
+    int deviceId = m_pollDeviceIds[m_currentPollIndex];
 
+    m_currentPollIndex =
+        (m_currentPollIndex + 1) % m_pollDeviceIds.size();
+
+    Device *device = getDevice(deviceId);
+    if (!device)
+        return;
+
+    const DeviceConfig &config = device->config();
 
     bool success = false;
 
-
-
-    switch (m_protocolType)
+    switch (config.protocolType)
     {
-
     case ProtocolType::ModbusRTU:
+    {
+        // RTU 使用串口或模拟数据源
+        if (config.dataSource == DataSource::Serial)
+        {
+            if (!m_modbusSimulationMode &&
+                !m_serialPort->isOpen())
+            {
+                return;
+            }
+        }
+        else if (config.dataSource == DataSource::Simulation)
+        {
+            if (!m_modbusSimulationMode)
+                return;
+        }
+        else
+        {
+            return;
+        }
+
+        if (config.rtuSlaveId < 1 || config.rtuSlaveId > 247 ||
+            config.rtuStartAddress < 0 ||
+            config.rtuStartAddress > 65535 ||
+            config.rtuQuantity < 1 ||
+            config.rtuQuantity > 125)
+        {
+            qWarning() << "RTU设备配置无效:" << deviceId;
+            return;
+        }
 
         success = requestModbusRead(
-            static_cast<quint8>(deviceId),
-            0,
-            3
+            static_cast<quint8>(config.rtuSlaveId),
+            static_cast<quint16>(config.rtuStartAddress),
+            static_cast<quint16>(config.rtuQuantity),
+            deviceId
             );
-
-        break;
-
-
-
-    case ProtocolType::ModbusTCP:
-
-        success = requestModbusTCPRead(
-            static_cast<quint8>(deviceId),
-            0,
-            3
-            );
-
-        break;
-
-
-
-    default:
         break;
     }
 
+    case ProtocolType::ModbusTCP:
+    {
+        if (config.dataSource != DataSource::TCP)
+            return;
 
+        if (!m_tcpConnected)
+            return;
+
+        if (config.tcpUnitId < 0 || config.tcpUnitId > 255 ||
+            config.tcpStartAddress < 0 ||
+            config.tcpStartAddress > 65535 ||
+            config.tcpQuantity < 1 ||
+            config.tcpQuantity > 125)
+        {
+            qWarning() << "TCP设备配置无效:" << deviceId;
+            return;
+        }
+
+        success = requestModbusTCPRead(
+            static_cast<quint8>(config.tcpUnitId),
+            static_cast<quint16>(config.tcpStartAddress),
+            static_cast<quint16>(config.tcpQuantity),
+            deviceId
+            );
+        break;
+    }
+
+    case ProtocolType::Custom:
+    default:
+        // 自定义串口协议不通过 Modbus 轮询
+        return;
+    }
 
     if (!success)
     {
-        qWarning()
-        << "Modbus轮询请求发送失败:"
-        << deviceId;
+        qWarning() << "Modbus轮询请求发送失败:"
+                   << deviceId;
     }
 }
 
 void DeviceManager::handleModbusRawData(
     const QByteArray &data)
 {
+    if (!m_modbusRequestPending)
+        return;
 
-    switch(m_protocolType)
-    {
-
-    case ProtocolType::ModbusRTU:
-
-        handleModbusRTUResponse(data);
-        break;
-
-
-    case ProtocolType::ModbusTCP:
-
-        handleModbusTCPResponse(data);
-        break;
-
-
-    default:
-
-        break;
-    }
-
+    handleModbusRTUResponse(data);
 }
 
 void DeviceManager::handleModbusRTUResponse(
@@ -833,7 +812,7 @@ void DeviceManager::handleModbusRTUResponse(
 
 
     processModbusRegisters(
-        m_expectedDeviceId,
+        m_expectedApplicationDeviceId,
         registers
         );
 }
@@ -881,7 +860,7 @@ void DeviceManager::handleModbusTCPResponse(const QByteArray &data)
 
     qDebug() << "Modbus TCP响应成功:" << registers;
 
-    processModbusRegisters(m_tcpExpectedUnitId, registers);
+    processModbusRegisters(m_tcpExpectedApplicationDeviceId, registers);
 }
 
 bool DeviceManager::connectModbusTCP(
@@ -898,7 +877,9 @@ bool DeviceManager::connectModbusTCP(
 bool DeviceManager::requestModbusTCPRead(
     quint8 unitId,
     quint16 startAddress,
-    quint16 quantity)
+    quint16 quantity,
+    int applicationDeviceId
+    )
 {
     if (!m_tcpConnected) {
         qDebug() << "Modbus TCP未连接，跳过读取请求";
@@ -912,18 +893,19 @@ bool DeviceManager::requestModbusTCPRead(
     transactionId++;
 
     // 保存当前请求上下文
-    m_expectedTransactionId = transactionId;
-    m_expectedUnitId = unitId;
-    m_expectedQuantity = quantity;
+    m_tcpExpectedTransactionId = transactionId;
+    m_tcpExpectedUnitId = unitId;
+    m_tcpExpectedQuantity = quantity;
+    m_tcpExpectedApplicationDeviceId = applicationDeviceId;
 
     m_tcpRequestPending = true;
 
-    // 将请求投递到 ModbusTCP 所属线程
+    // 按照信号声明顺序发送请求
     emit sendTCPReadRequest(
-        transactionId,
         unitId,
         startAddress,
-        quantity
+        quantity,
+        transactionId
         );
 
     // 启动超时计时器

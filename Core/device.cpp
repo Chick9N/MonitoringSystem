@@ -16,6 +16,37 @@ const DeviceData& Device::data() const{
     return m_data;
 }
 
+void Device::setName(const QString &name)
+{
+    m_name = name;
+}
+
+QString Device::name() const
+{
+    return m_name;
+}
+
+void Device::setProtocolType(ProtocolType type)
+{
+    m_protocolType = type;
+}
+
+ProtocolType Device::protocolType() const
+{
+    return m_protocolType;
+}
+
+void Device::setConfig(const DeviceConfig &config)
+{
+    m_config = config;
+    m_id = config.deviceId;
+}
+
+const DeviceConfig& Device::config() const
+{
+    return m_config;
+}
+
 void Device::updateData(){
     if (!m_running)
     {
