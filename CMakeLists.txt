@@ -46,6 +46,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         UI/adddevicedialog.h UI/adddevicedialog.cpp UI/adddevicedialog.ui
         Core/DeviceConfig.h
         Core/deviceconfig.h
+        Utils/ipv4input.h Utils/ipv4input.cpp
 
 
 
@@ -75,6 +76,10 @@ target_link_libraries(MonitoringSystem PRIVATE
     Qt${QT_VERSION_MAJOR}::SerialPort
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Network)
+
+target_include_directories(MonitoringSystem PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

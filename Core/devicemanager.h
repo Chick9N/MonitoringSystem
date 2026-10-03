@@ -100,10 +100,10 @@ signals:
 
     void connectTCPRequested(const QString &ip, quint16 port);
     void sendTCPReadRequest(
+        quint16 transactionId,
         quint8 unitId,
         quint16 startAddress,
-        quint16 quantity,
-        quint16 transactionId
+        quint16 quantity
         );
 private:
     QList<Device*> m_devices; // 设备容器

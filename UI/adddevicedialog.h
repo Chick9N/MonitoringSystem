@@ -24,6 +24,8 @@ private slots:
 
     void on_buttonBox_rejected();
 
+protected:
+    void accept() override;
 private:
     Ui::AddDeviceDialog *ui;
 };

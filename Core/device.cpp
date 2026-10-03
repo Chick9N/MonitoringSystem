@@ -40,6 +40,8 @@ void Device::setConfig(const DeviceConfig &config)
 {
     m_config = config;
     m_id = config.deviceId;
+    m_name = config.deviceName;
+    m_protocolType = config.protocolType;
 }
 
 const DeviceConfig& Device::config() const

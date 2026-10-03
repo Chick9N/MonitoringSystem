@@ -23,7 +23,7 @@ DeviceManager::DeviceManager(QObject *parent)
         &AlarmManager::alarmTriggered,
         this,
         &DeviceManager::alarmTriggered
-    );
+        );
 
     // 串口
     connect(
@@ -120,9 +120,6 @@ DeviceManager::DeviceManager(QObject *parent)
         }
         );
 
-    // 轮询
-    m_modbusPollTimer = new QTimer(this);
-
     // Modbus 动态轮询
     m_modbusPollTimer = new QTimer(this);
 
@@ -214,11 +211,11 @@ DeviceManager::DeviceManager(QObject *parent)
 
     // 启动工作线程
     m_modbusThread->start();
+    emit connectModbusTCP("127.0.0.1", 1502);
 
-    // 通过信号请求连接，不再直接调用
-    emit connectTCPRequested("127.0.0.1", 1502);
-
-    // 测试
+    // 注意：此处不主动连接 Modbus TCP。
+    // 应在外部 Modbus TCP Server 成功监听端口后，
+    // 由初始化流程调用 connectModbusTCP(ip, port)。
 }
 
 DeviceManager::~DeviceManager()
@@ -354,17 +351,18 @@ void DeviceManager::updateDeviceData(
         );
 }
 
-void DeviceManager::updateAllDevices(){
-    if (m_dataSource != DataSource::Simulation)
-        return;
+void DeviceManager::updateAllDevices()
+{
+    for (Device* device : m_devices) {
+        if (device->config().dataSource != DataSource::Simulation)
+            continue;
 
-    for(Device* device:m_devices){
         device->updateData();
 
         m_alarmManager->checkDeviceData(
             device->id(),
             device->data()
-        );
+            );
     }
 }
 
@@ -902,10 +900,10 @@ bool DeviceManager::requestModbusTCPRead(
 
     // 按照信号声明顺序发送请求
     emit sendTCPReadRequest(
+        transactionId,
         unitId,
         startAddress,
-        quantity,
-        transactionId
+        quantity
         );
 
     // 启动超时计时器

@@ -4,7 +4,6 @@
 #include <qtablewidget.h>
 #include "minichartwidget.h"
 #include "serialconfigwindow.h"
-#include "../Communication/modbusrtu.h"
 #include <QPushButton>
 #include "adddevicedialog.h"
 #include <QMessageBox>
@@ -66,6 +65,7 @@ MainWindow::MainWindow(QWidget *parent)
     databaseManager->openDatabase();
     databaseManager->createTables();
 
+    // 此处注意读取数据库加载流程优化
     loadAlarmHistory();
     loadCurrentAlarms();
 
@@ -794,8 +794,6 @@ void MainWindow::on_addDeviceBtn_clicked()
     Device *device = new Device(config.deviceId, deviceManager);
 
     device->setConfig(config);
-
-    deviceManager->addDevice(device);
 
     // 添加到设备管理器
     deviceManager->addDevice(device);

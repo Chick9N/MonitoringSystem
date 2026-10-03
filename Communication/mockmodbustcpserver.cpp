@@ -2,6 +2,12 @@
 #include <QDebug>
 #include <QVector>
 
+/*
+实际工业设备通信中，通常由你的上位机作为 Modbus TCP 客户端，主动连接设备提供的服务器。
+因此这里建立一个假服务器，上位机系统作为客户端，接收传来的数据。
+*/
+
+
 MockModbusTCPServer::MockModbusTCPServer(QObject *parent)
     : QObject(parent),
     m_server(new QTcpServer(this))
@@ -112,7 +118,8 @@ void MockModbusTCPServer::readRequest()
 }
 
 void MockModbusTCPServer::processRequest(
-    QTcpSocket *socket, const QByteArray &frame)
+    QTcpSocket *socket,
+    const QByteArray &frame)
 {
     if (!socket || frame.size() < 8) {
         return;
@@ -124,73 +131,84 @@ void MockModbusTCPServer::processRequest(
                static_cast<quint8>(frame[offset + 1]);
     };
 
-    quint16 transactionId = readUInt16(0);
-    quint8 unitId = static_cast<quint8>(frame[6]);
-    quint8 functionCode = static_cast<quint8>(frame[7]);
+    const quint16 transactionId = readUInt16(0);
+    const quint16 protocolId = readUInt16(2);
+    const quint16 length = readUInt16(4);
+    const quint8 unitId = static_cast<quint8>(frame[6]);
+    const quint8 functionCode = static_cast<quint8>(frame[7]);
 
-    QByteArray response;
+    // 检查 MBAP 头
+    if (protocolId != 0 || length != frame.size() - 6) {
+        qWarning() << "非法Modbus TCP报文";
+        return;
+    }
 
-    // 暂时只支持读取保持寄存器（功能码03）
-    if (functionCode != 0x03) {
-        response.append(frame[0]);
-        response.append(frame[1]);
+    // 生成异常响应
+    auto sendException = [&](quint8 exceptionCode) {
+        QByteArray response;
+
+        response.append(frame.left(4));  // Transaction ID + Protocol ID
         response.append(char(0));
-        response.append(char(0));
-        response.append(char(0));
-        response.append(char(3));
+        response.append(char(3));        // Length = Unit ID + FC + Exception
         response.append(static_cast<char>(unitId));
         response.append(static_cast<char>(functionCode | 0x80));
-        response.append(char(0x01)); // 非法功能码
+        response.append(static_cast<char>(exceptionCode));
+
         socket->write(response);
+
+        qDebug() << "Modbus TCP异常响应:"
+                 << response.toHex(' ').toUpper();
+    };
+
+    // 当前仅支持读取保持寄存器（FC03）
+    if (functionCode != 0x03) {
+        sendException(0x01);  // Illegal Function
         return;
     }
 
-    if (frame.size() != 12) {
+    // FC03请求的MBAP Length应为6：
+    // Unit ID(1) + Function Code(1) + Start Address(2) + Quantity(2)
+    if (length != 6 || frame.size() != 12) {
+        sendException(0x03);  // Illegal Data Value
         return;
     }
 
-    quint16 startAddress = readUInt16(8);
-    quint16 quantity = readUInt16(10);
+    const quint16 startAddress = readUInt16(8);
+    const quint16 quantity = readUInt16(10);
 
     // 读取数量必须为1~125
     if (quantity < 1 || quantity > 125) {
-        response.append(frame.left(4));
-        response.append(char(0));
-        response.append(char(3));
-        response.append(static_cast<char>(unitId));
-        response.append(char(0x83));
-        response.append(char(0x03)); // 非法数据值
-        socket->write(response);
+        sendException(0x03);  // Illegal Data Value
         return;
     }
 
-    // 模拟寄存器：温度、 电压、在线状态
+    // 模拟寄存器：温度、电压、在线状态
     const QVector<quint16> registers = {256, 220, 1};
 
-    // 当前模拟映射仅有地址0、1、2
-    if (startAddress + quantity > registers.size()) {
-        response.append(frame.left(4));
-        response.append(char(0));
-        response.append(char(3));
-        response.append(static_cast<char>(unitId));
-        response.append(char(0x83));
-        response.append(char(0x02)); // 非法数据地址
-        socket->write(response);
+    // 检查寄存器地址范围
+    if (startAddress >= registers.size() ||
+        quantity > registers.size() - startAddress) {
+        sendException(0x02);  // Illegal Data Address
         return;
     }
 
     // 构造正常响应
-    quint16 responseLength = 3 + quantity * 2;
+    QByteArray response;
 
-    response.append(frame.left(4)); // Transaction ID + Protocol ID
+    const quint16 responseLength = 3 + quantity * 2;
+
+    response.append(frame.left(4));  // Transaction ID + Protocol ID
+
     response.append(static_cast<char>(responseLength >> 8));
     response.append(static_cast<char>(responseLength & 0xFF));
+
     response.append(static_cast<char>(unitId));
     response.append(char(0x03));
     response.append(static_cast<char>(quantity * 2));
 
     for (int i = 0; i < quantity; ++i) {
-        quint16 value = registers[startAddress + i];
+        const quint16 value = registers[startAddress + i];
+
         response.append(static_cast<char>(value >> 8));
         response.append(static_cast<char>(value & 0xFF));
     }
