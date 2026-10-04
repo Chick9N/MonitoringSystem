@@ -3,6 +3,7 @@
 #include <QMessageBox>
 #include <QDebug>
 #include <QHBoxLayout>
+#include <QHostAddress>
 
 AddDeviceDialog::AddDeviceDialog(QWidget *parent)
     : QDialog(parent)
@@ -24,6 +25,16 @@ void AddDeviceDialog::on_protocolComboBox_currentIndexChanged(int index)
 
 void AddDeviceDialog::on_buttonBox_accepted()
 {
+    QString ip = ui->ipWidget->address();
+
+    quint16 port =
+        ui->tcpPortSpinBox->value();
+
+    emit testTCPConnection(
+        ip,
+        port
+        );
+
     accept();
 }
 
@@ -109,4 +120,66 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
     config.tcpQuantity = ui->tcpQuantitySpinBox->value();
 
     return config;
+}
+
+
+
+void AddDeviceDialog::on_testConnectionBtn_clicked()
+{
+
+    QString ip = ui->ipWidget->address();
+
+    quint16 port =
+        ui->tcpPortSpinBox->value();
+
+
+    // IP校验
+    QHostAddress address;
+
+    if(!address.setAddress(ip))
+    {
+        QMessageBox::warning(
+            this,
+            "输入错误",
+            "IP地址格式错误"
+            );
+
+        return;
+    }
+
+
+    // 端口校验
+
+    if(port <=0 || port >65535)
+    {
+        QMessageBox::warning(
+            this,
+            "输入错误",
+            "端口范围错误"
+            );
+
+        return;
+    }
+
+    ui->testConnectionBtn->setEnabled(false);
+
+    emit testTCPConnection(
+        ip,
+        port
+        );
+}
+
+void AddDeviceDialog::onTCPTestResult(
+    bool success,
+    const QString &message
+    )
+{
+    if(success)
+    {
+        ui->connectionStatusLabel->setText("连接成功");
+    }
+    else
+    {
+        ui->connectionStatusLabel->setText("连接失败"+message);
+    }
 }

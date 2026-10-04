@@ -771,33 +771,40 @@ void MainWindow::on_addDeviceBtn_clicked()
 {
     AddDeviceDialog dialog(this);
 
-    if (dialog.exec() != QDialog::Accepted)
+
+    connect(
+        &dialog,
+        &AddDeviceDialog::testTCPConnection,
+        deviceManager,
+        &DeviceManager::testTCPConnection
+        );
+
+    connect(
+        deviceManager,
+        &DeviceManager::tcpTestResult,
+        &dialog,
+        &AddDeviceDialog::onTCPTestResult
+        );
+
+    if(dialog.exec() != QDialog::Accepted)
     {
         return;
     }
 
-    // 获取对话框配置
-    DeviceConfig config = dialog.getDeviceConfig();
 
-    // 检查设备 ID 是否重复
-    if (deviceManager->getDevice(config.deviceId))
-    {
-        QMessageBox::warning(
-            this,
-            "添加失败",
-            "该设备 ID 已存在！"
+    DeviceConfig config =
+        dialog.getDeviceConfig();
+
+
+    Device *device =
+        new Device(
+            config.deviceId,
+            deviceManager
             );
-        return;
-    }
 
-    // 创建设备对象，由 DeviceManager 管理其生命周期
-    Device *device = new Device(config.deviceId, deviceManager);
 
     device->setConfig(config);
 
-    // 添加到设备管理器
-    deviceManager->addDevice(device);
 
-    qDebug() << device->name()
-             << static_cast<int>(device->protocolType());
+    deviceManager->addDevice(device);
 }

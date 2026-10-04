@@ -7,6 +7,17 @@
 #include <QByteArray>
 #include <QHostAddress>
 #include <QHash>
+#include <QMap>
+#include <QTimer>
+
+
+struct MockDeviceData
+{
+    quint8 unitId;
+
+    // 地址 -> 数据
+    QMap<quint16, quint16> registers;
+};
 
 class MockModbusTCPServer : public QObject
 {
@@ -25,11 +36,18 @@ private slots:
     void onNewConnection();
     // 接收客户端发送的 Modbus TCP 请求
     void readRequest();
-
+    // 定时更新设备数据
+    void updateMockDevices();
 private:
     // 监听本地 TCP 端口
     QTcpServer *m_server;
     QHash<QTcpSocket*, QByteArray> m_clientBuffers;
+
+    // 模拟数据
+    QMap<quint8, MockDeviceData> m_devices;
+
+    QTimer *m_updateTimer;
+
 };
 
 #endif // MOCKMODBUSTCPSERVER_H

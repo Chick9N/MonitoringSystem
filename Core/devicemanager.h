@@ -85,7 +85,10 @@ public:
 
 public slots:
     void updateAllDevices();
-
+    void testTCPConnection(
+        const QString &ip,
+        quint16 port
+        );
 signals:
     void deviceRemoved(int deviceId);
 
@@ -105,6 +108,10 @@ signals:
         quint16 startAddress,
         quint16 quantity
         );
+
+    void tcpTestResult(
+        bool success,
+        QString message);
 private:
     QList<Device*> m_devices; // 设备容器
     AlarmManager *m_alarmManager;

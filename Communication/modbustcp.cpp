@@ -288,9 +288,43 @@ bool ModbusTCP::parseReadHoldingRegistersResponse(
     return true;
 }
 
-void ModbusTCP::connectToDevice(const QString &ip, quint16 port)
+void ModbusTCP::connectToDevice(
+    const QString &ip,
+    quint16 port)
 {
-    m_socket->connectToHost(ip, port);
+    auto state = m_socket->state();
+
+
+    if(state == QAbstractSocket::ConnectedState)
+    {
+        qDebug()
+        << "Modbus TCP已经连接";
+
+        emit tcpConnected();
+        return;
+    }
+
+
+    if(state == QAbstractSocket::ConnectingState ||
+        state == QAbstractSocket::HostLookupState)
+    {
+        qDebug()
+        << "Modbus TCP正在连接";
+
+        return;
+    }
+
+
+    qDebug()
+        << "开始连接Modbus TCP:"
+        << ip
+        << port;
+
+
+    m_socket->connectToHost(
+        ip,
+        port
+        );
 }
 
 void ModbusTCP::disconnectFromDevice()

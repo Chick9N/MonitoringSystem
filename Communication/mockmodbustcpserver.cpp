@@ -1,4 +1,5 @@
 #include "mockmodbustcpserver.h"
+#include "../Utils/simulatedata.h"
 #include <QDebug>
 #include <QVector>
 
@@ -9,11 +10,72 @@
 
 
 MockModbusTCPServer::MockModbusTCPServer(QObject *parent)
-    : QObject(parent),
-    m_server(new QTcpServer(this))
+    : QObject(parent)
+    , m_server(new QTcpServer(this))
+    , m_updateTimer(new QTimer(this))
 {
-    connect(m_server, &QTcpServer::newConnection,
-            this, &MockModbusTCPServer::onNewConnection);
+    // 模拟设备1
+    MockDeviceData dev1;
+
+    dev1.unitId = 1;
+
+    dev1.registers =
+        {
+            {0,256},   // 温度25.6℃
+            {1,220},   // 电压
+            {2,1}      // 在线
+        };
+
+
+    // 模拟设备2
+    MockDeviceData dev2;
+
+    dev2.unitId = 2;
+
+    dev2.registers =
+        {
+            {0,315},
+            {1,221},
+            {2,1}
+        };
+
+
+    // 模拟设备3
+    MockDeviceData dev3;
+
+    dev3.unitId = 3;
+
+    dev3.registers =
+        {
+            {0,280},
+            {1,218},
+            {2,1}
+        };
+
+
+    m_devices.insert(1,dev1);
+    m_devices.insert(2,dev2);
+    m_devices.insert(3,dev3);
+
+
+
+    connect(
+        m_server,
+        &QTcpServer::newConnection,
+        this,
+        &MockModbusTCPServer::onNewConnection
+        );
+
+    connect(
+        m_updateTimer,
+        &QTimer::timeout,
+        this,
+        &MockModbusTCPServer::updateMockDevices
+        );
+
+
+    // 每1000ms更新一次模拟数据
+    m_updateTimer->start(1000);
 }
 
 bool MockModbusTCPServer::start(quint16 port)
@@ -121,100 +183,412 @@ void MockModbusTCPServer::processRequest(
     QTcpSocket *socket,
     const QByteArray &frame)
 {
-    if (!socket || frame.size() < 8) {
+    if (!socket || frame.size() < 8)
+    {
         return;
     }
 
-    // 读取16位大端整数
-    auto readUInt16 = [&frame](int offset) -> quint16 {
-        return (static_cast<quint8>(frame[offset]) << 8) |
-               static_cast<quint8>(frame[offset + 1]);
+
+    /*
+        Modbus TCP报文格式:
+
+        MBAP Header:
+        --------------------------------
+        Transaction ID  2字节
+        Protocol ID     2字节
+        Length          2字节
+
+        Unit ID          1字节
+
+        PDU:
+        Function Code    1字节
+        Data             N字节
+
+    */
+
+
+    // 读取16位大端数据
+    auto readUInt16 =
+        [&frame](int offset)->quint16
+    {
+        return
+            (static_cast<quint8>(frame[offset]) << 8)
+            |
+            static_cast<quint8>(frame[offset+1]);
     };
 
-    const quint16 transactionId = readUInt16(0);
-    const quint16 protocolId = readUInt16(2);
-    const quint16 length = readUInt16(4);
-    const quint8 unitId = static_cast<quint8>(frame[6]);
-    const quint8 functionCode = static_cast<quint8>(frame[7]);
 
-    // 检查 MBAP 头
-    if (protocolId != 0 || length != frame.size() - 6) {
-        qWarning() << "非法Modbus TCP报文";
+    // ================================
+    // 解析MBAP头
+    // ================================
+
+    quint16 transactionId = readUInt16(0);
+
+    quint16 protocolId = readUInt16(2);
+
+    quint16 length = readUInt16(4);
+
+
+    quint8 unitId =
+        static_cast<quint8>(frame[6]);
+
+
+    quint8 functionCode =
+        static_cast<quint8>(frame[7]);
+
+
+
+    // Modbus TCP协议标识必须为0
+    if(protocolId != 0)
+    {
+        qWarning()
+        <<"非法Protocol ID";
+
         return;
     }
 
-    // 生成异常响应
-    auto sendException = [&](quint8 exceptionCode) {
+
+    // 检查报文长度
+    if(length != frame.size()-6)
+    {
+        qWarning()
+        <<"Modbus TCP长度错误";
+
+        return;
+    }
+
+
+
+    /*
+        发送异常响应
+
+        异常响应格式:
+
+        Transaction ID
+        Protocol ID
+        Length
+        Unit ID
+        Function Code + 0x80
+        Exception Code
+
+    */
+
+    auto sendException =
+        [&](quint8 code)
+    {
         QByteArray response;
 
-        response.append(frame.left(4));  // Transaction ID + Protocol ID
+
+        // 保留事务ID和协议ID
+        response.append(frame.left(4));
+
+
+        // Length:
+        // UnitID + FunctionCode + ExceptionCode
         response.append(char(0));
-        response.append(char(3));        // Length = Unit ID + FC + Exception
-        response.append(static_cast<char>(unitId));
-        response.append(static_cast<char>(functionCode | 0x80));
-        response.append(static_cast<char>(exceptionCode));
+        response.append(char(3));
+
+
+        response.append(
+            static_cast<char>(unitId)
+            );
+
+
+        response.append(
+            static_cast<char>(functionCode | 0x80)
+            );
+
+
+        response.append(
+            static_cast<char>(code)
+            );
+
 
         socket->write(response);
 
-        qDebug() << "Modbus TCP异常响应:"
-                 << response.toHex(' ').toUpper();
+
+        qDebug()
+            <<"Modbus TCP异常响应:"
+            <<response.toHex(' ').toUpper();
     };
 
-    // 当前仅支持读取保持寄存器（FC03）
-    if (functionCode != 0x03) {
-        sendException(0x01);  // Illegal Function
+
+
+
+    // ================================
+    // 检查功能码
+    // 当前只支持03读取保持寄存器
+    // ================================
+
+    if(functionCode != 0x03)
+    {
+        // Illegal Function
+        sendException(0x01);
+
         return;
     }
 
-    // FC03请求的MBAP Length应为6：
-    // Unit ID(1) + Function Code(1) + Start Address(2) + Quantity(2)
-    if (length != 6 || frame.size() != 12) {
-        sendException(0x03);  // Illegal Data Value
+
+
+    /*
+        FC03请求格式:
+
+        Unit ID
+        Function Code
+        Start Address 2字节
+        Quantity      2字节
+
+        所以完整长度:
+        MBAP 6字节
+        + UnitID 1
+        + PDU 5
+
+        总共12字节
+    */
+
+    if(frame.size()!=12)
+    {
+        // Illegal Data Value
+        sendException(0x03);
+
         return;
     }
 
-    const quint16 startAddress = readUInt16(8);
-    const quint16 quantity = readUInt16(10);
 
-    // 读取数量必须为1~125
-    if (quantity < 1 || quantity > 125) {
-        sendException(0x03);  // Illegal Data Value
+
+    quint16 startAddress =
+        readUInt16(8);
+
+
+    quint16 quantity =
+        readUInt16(10);
+
+
+
+    // Modbus规定一次最多125个寄存器
+    if(quantity < 1 || quantity > 125)
+    {
+        sendException(0x03);
+
         return;
     }
 
-    // 模拟寄存器：温度、电压、在线状态
-    const QVector<quint16> registers = {256, 220, 1};
 
-    // 检查寄存器地址范围
-    if (startAddress >= registers.size() ||
-        quantity > registers.size() - startAddress) {
-        sendException(0x02);  // Illegal Data Address
+
+
+    // ================================
+    // 根据UnitID寻找模拟设备
+    // ================================
+
+    if(!m_devices.contains(unitId))
+    {
+        qWarning()
+        <<"不存在模拟设备 UnitID:"
+        <<unitId;
+
+
+        // Illegal Data Address
+        sendException(0x02);
+
         return;
     }
 
+
+
+    const MockDeviceData &device =
+        m_devices[unitId];
+
+
+
+    /*
+        根据请求地址读取寄存器
+
+        例如:
+
+        startAddress=0
+        quantity=3
+
+
+        读取:
+
+        0 温度
+        1 电压
+        2 在线状态
+
+    */
+
+
+    QVector<quint16> values;
+
+
+    for(int i=0;i<quantity;i++)
+    {
+
+        quint16 address =
+            startAddress+i;
+
+
+
+        // 模拟设备不存在该寄存器
+        if(!device.registers.contains(address))
+        {
+            qWarning()
+            <<"不存在寄存器地址:"
+            <<address;
+
+
+            // Illegal Data Address
+            sendException(0x02);
+
+            return;
+        }
+
+
+
+        values.append(
+            device.registers[address]
+            );
+    }
+
+
+
+
+    // ================================
     // 构造正常响应
+    // ================================
+
+
     QByteArray response;
 
-    const quint16 responseLength = 3 + quantity * 2;
 
-    response.append(frame.left(4));  // Transaction ID + Protocol ID
 
-    response.append(static_cast<char>(responseLength >> 8));
-    response.append(static_cast<char>(responseLength & 0xFF));
+    /*
+        响应:
 
-    response.append(static_cast<char>(unitId));
-    response.append(char(0x03));
-    response.append(static_cast<char>(quantity * 2));
+        Transaction ID
+        Protocol ID
+        Length
+        Unit ID
+        Function Code
+        Byte Count
+        Register Data
 
-    for (int i = 0; i < quantity; ++i) {
-        const quint16 value = registers[startAddress + i];
+    */
 
-        response.append(static_cast<char>(value >> 8));
-        response.append(static_cast<char>(value & 0xFF));
+
+    response.append(
+        frame.left(4)
+        );
+
+
+
+    // Length =
+    // UnitID(1)
+    // FunctionCode(1)
+    // ByteCount(1)
+    // Data(quantity*2)
+
+    quint16 responseLength =
+        3 + quantity * 2;
+
+
+
+    response.append(
+        static_cast<char>(responseLength >> 8)
+        );
+
+
+    response.append(
+        static_cast<char>(responseLength & 0xff)
+        );
+
+
+
+    response.append(
+        static_cast<char>(unitId)
+        );
+
+
+    response.append(
+        char(0x03)
+        );
+
+
+
+    // 数据字节数量
+    response.append(
+        static_cast<char>(quantity*2)
+        );
+
+
+
+    // 写入寄存器数据
+    for(quint16 value: values)
+    {
+        response.append(
+            static_cast<char>(value >> 8)
+            );
+
+        response.append(
+            static_cast<char>(value & 0xff)
+            );
     }
+
+
 
     socket->write(response);
 
-    qDebug() << "Modbus TCP响应:"
-             << response.toHex(' ').toUpper();
+
+
+    qDebug()
+        <<"Modbus TCP响应:"
+        <<response.toHex(' ').toUpper();
+
+
+    qDebug()
+        <<"设备UnitID:"
+        <<unitId
+        <<"寄存器:"
+        <<values;
+}
+
+void MockModbusTCPServer::updateMockDevices()
+{
+
+    for(auto &device : m_devices)
+    {
+
+        // 温度寄存器 地址0
+
+        device.registers[0] =
+            SimulationData::temperature(
+                device.registers[0]
+                );
+
+
+        // 电压寄存器 地址1
+
+        device.registers[1] =
+            SimulationData::voltage(
+                device.registers[1]
+                );
+
+
+        // 在线状态 地址2
+
+        device.registers[2] =
+            SimulationData::online();
+
+
+        qDebug()
+            << "模拟设备更新:"
+            << "UnitID:"
+            << device.unitId
+            << "Temp:"
+            << device.registers[0] / 10.0
+            << "Voltage:"
+            << device.registers[1];
+
+    }
+
 }

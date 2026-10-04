@@ -208,10 +208,38 @@ DeviceManager::DeviceManager(QObject *parent)
 
                 m_tcpRequestPending = false;
             });
+    // tcp连接测试
+    connect(
+        m_modbusTCP,
+        &ModbusTCP::tcpConnected,
+        this,
+        [this]()
+        {
+            emit tcpTestResult(
+                true,
+                "Modbus TCP连接成功"
+                );
+        }
+        );
+
+
+    connect(
+        m_modbusTCP,
+        &ModbusTCP::tcpError,
+        this,
+        [this](const QString &error)
+        {
+            emit tcpTestResult(
+                false,
+                error
+                );
+        }
+        );
+
 
     // 启动工作线程
     m_modbusThread->start();
-    emit connectModbusTCP("127.0.0.1", 1502);
+    //emit connectModbusTCP("127.0.0.1", 1502);
 
     // 注意：此处不主动连接 Modbus TCP。
     // 应在外部 Modbus TCP Server 成功监听端口后，
@@ -1005,4 +1033,30 @@ void DeviceManager::setModbusSimulationMode(bool enabled)
 void DeviceManager::setAutoModbusResponse(bool enabled)
 {
     m_autoModbusResponse = enabled;
+}
+
+void DeviceManager::testTCPConnection(
+    const QString &ip,
+    quint16 port
+    )
+{
+    qDebug()
+    << "测试Modbus TCP连接:"
+    << ip
+    << port;
+
+
+    if(!m_modbusTCP)
+    {
+        qWarning()
+        << "ModbusTCP对象为空";
+
+        return;
+    }
+
+
+    emit connectTCPRequested(
+        ip,
+        port
+        );
 }

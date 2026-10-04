@@ -47,6 +47,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/DeviceConfig.h
         Core/deviceconfig.h
         Utils/ipv4input.h Utils/ipv4input.cpp
+        Utils/simulatedata.h Utils/simulatedata.cpp
 
 
 
