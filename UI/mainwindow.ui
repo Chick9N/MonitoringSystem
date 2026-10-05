@@ -208,6 +208,20 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="tcpServerBtn">
+       <property name="text">
+        <string>启动TCP服务器</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="tcpStatusLabel">
+       <property name="text">
+        <string>服务器状态</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="verticalSpacer">
        <property name="orientation">
         <enum>Qt::Orientation::Vertical</enum>

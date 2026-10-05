@@ -98,10 +98,38 @@ bool MockModbusTCPServer::start(quint16 port)
 
 void MockModbusTCPServer::stop()
 {
-    if (m_server->isListening()) {
-        m_server->close();
-        qDebug() << "Modbus TCP服务器已停止";
+
+    // 断开所有已经连接的客户端
+    for(auto socket : m_clientBuffers.keys())
+    {
+        if(socket)
+        {
+            socket->disconnectFromHost();
+
+            if(socket->state()
+                != QAbstractSocket::UnconnectedState)
+            {
+                socket->close();
+            }
+
+            socket->deleteLater();
+        }
     }
+
+
+    m_clientBuffers.clear();
+
+
+    // 停止监听
+    if(m_server->isListening())
+    {
+        m_server->close();
+    }
+
+
+    qDebug()
+        << "Modbus TCP服务器已停止";
+
 }
 
 void MockModbusTCPServer::onNewConnection()

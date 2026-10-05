@@ -25,16 +25,6 @@ void AddDeviceDialog::on_protocolComboBox_currentIndexChanged(int index)
 
 void AddDeviceDialog::on_buttonBox_accepted()
 {
-    QString ip = ui->ipWidget->address();
-
-    quint16 port =
-        ui->tcpPortSpinBox->value();
-
-    emit testTCPConnection(
-        ip,
-        port
-        );
-
     accept();
 }
 

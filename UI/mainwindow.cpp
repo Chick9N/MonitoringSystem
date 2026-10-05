@@ -92,9 +92,9 @@ MainWindow::MainWindow(QWidget *parent)
         );
 
     // 服务器
-    if (!m_mockServer->start(1502)) {
-        qWarning() << "模拟服务器启动失败";
-    }
+    //if (!m_mockServer->start(1502)) {
+    //    qWarning() << "模拟服务器启动失败";
+    //}
 
 }
 
@@ -807,4 +807,57 @@ void MainWindow::on_addDeviceBtn_clicked()
 
 
     deviceManager->addDevice(device);
+}
+
+void MainWindow::on_tcpServerBtn_clicked()
+{
+
+    if(!m_tcpServerRunning)
+    {
+
+        if(m_mockServer->start(1502))
+        {
+            m_tcpServerRunning=true;
+
+
+            ui->tcpServerBtn
+                ->setText("关闭TCP服务器");
+
+
+            ui->tcpStatusLabel
+                ->setText(
+                    "TCP服务器运行中"
+                    );
+
+
+            qDebug()
+                <<"启动Modbus TCP服务器";
+
+        }
+
+    }
+    else
+    {
+
+        m_mockServer->stop();
+
+
+        m_tcpServerRunning=false;
+
+
+        ui->tcpServerBtn
+            ->setText("启动TCP服务器");
+
+
+        ui->tcpStatusLabel
+            ->setText(
+                "TCP服务器已关闭"
+                );
+
+
+        qDebug()
+            <<"关闭Modbus TCP服务器";
+
+    }
+
 }

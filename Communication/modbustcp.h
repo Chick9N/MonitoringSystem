@@ -6,6 +6,13 @@
 #include <QObject>
 #include <QVector>
 #include <QString>
+#include <QTimer>
+#include <QMap>
+
+struct PendingRequest
+{
+    QTimer *timer;
+};
 
 class ModbusTCP : public QObject
 {
@@ -56,17 +63,26 @@ signals:
     void tcpConnected();
     void tcpDisconnected();
     void tcpError(const QString &error);
+    void requestTimeout(quint16 transactionId);
 private:
     QTcpSocket *m_socket;
     QByteArray m_buffer;
     // 从 TCP 缓冲区提取完整 Modbus TCP 帧
     bool tryExtractFrame(QByteArray &frame);
+    QMap<quint16, PendingRequest> m_pendingRequests;
+    QTimer *m_reconnectTimer;
 
+    QString m_ip;
+    quint16 m_port;
 
 private slots:
 
     void readData();
     void shutdown();
+
+    void onDisconnected();
+
+    void reconnect();
 };
 
 #endif // MODBUSTCP_H

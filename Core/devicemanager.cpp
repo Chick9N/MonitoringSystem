@@ -173,23 +173,63 @@ DeviceManager::DeviceManager(QObject *parent)
                 }
             }, Qt::QueuedConnection);
 
-    connect(m_modbusTCP, &ModbusTCP::tcpConnected,
-            this, [this]() {
-                m_tcpConnected = true;
-                qDebug() << "主线程：Modbus TCP已连接";
-            }, Qt::QueuedConnection);
+    connect(
+        m_modbusTCP,
+        &ModbusTCP::tcpConnected,
+        this,
+        [this]()
+        {
+            m_tcpConnected = true;
 
-    connect(m_modbusTCP, &ModbusTCP::tcpDisconnected,
-            this, [this]()
+            qDebug()
+                << "主线程：Modbus TCP已连接";
+
+
+            // 停止可能存在的TCP超时状态
+            m_tcpTimeoutTimer->stop();
+            m_tcpRequestPending = false;
+
+
+            // 不要这里直接设置设备在线
+            // 等下一轮Modbus轮询成功后恢复
+        },
+        Qt::QueuedConnection
+        );
+
+    connect(
+        m_modbusTCP,
+        &ModbusTCP::tcpDisconnected,
+        this,
+        [this]()
+        {
+            qDebug()
+            <<"Modbus TCP连接断开";
+
+
+            m_tcpConnected=false;
+
+
+            m_tcpTimeoutTimer->stop();
+            m_tcpRequestPending=false;
+
+
+            // TCP断开，所有TCP设备离线
+
+            for(Device *device:m_devices)
             {
-                qDebug() << "Modbus TCP连接已断开";
+                if(device->config().protocolType
+                    != ProtocolType::ModbusTCP)
+                    continue;
 
-                m_tcpConnected = false;
 
-                // 清理TCP请求状态
-                m_tcpTimeoutTimer->stop();
-                m_tcpRequestPending = false;
-            });
+                DeviceData data=device->data();
+
+                data.isOnline=false;
+
+                device->setData(data);
+            }
+
+        });
 
     connect(m_modbusTCP, &ModbusTCP::tcpError,
             this, [](const QString &error) {
@@ -208,6 +248,14 @@ DeviceManager::DeviceManager(QObject *parent)
 
                 m_tcpRequestPending = false;
             });
+
+    connect(
+        m_modbusTCP,
+        &ModbusTCP::requestTimeout,
+        this,
+        &DeviceManager::onModbusTimeout
+        );
+
     // tcp连接测试
     connect(
         m_modbusTCP,
@@ -1059,4 +1107,32 @@ void DeviceManager::testTCPConnection(
         ip,
         port
         );
+}
+
+void DeviceManager::onModbusTimeout(quint16 transactionId)
+{
+    if(transactionId != m_tcpExpectedTransactionId)
+        return;
+
+
+    qWarning()
+        <<"TCP设备响应超时:"
+        <<m_tcpExpectedApplicationDeviceId;
+
+
+    Device *device =
+        getDevice(m_tcpExpectedApplicationDeviceId);
+
+
+    if(device)
+    {
+        DeviceData data=device->data();
+
+        data.isOnline=false;
+
+        device->setData(data);
+    }
+
+
+    m_tcpRequestPending=false;
 }

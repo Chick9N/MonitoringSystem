@@ -3,18 +3,21 @@
 #include <QDebug>
 
 ModbusTCP::ModbusTCP(QObject *parent)
-    : QObject(parent),
-    m_socket(new QTcpSocket(this))
+    : QObject(parent)
+    , m_socket(new QTcpSocket(this))
+    , m_reconnectTimer(new QTimer(this))
 {
     connect(m_socket, &QTcpSocket::connected, this, [this]() {
         qDebug() << "Modbus TCP连接成功";
         emit tcpConnected();
     });
 
-    connect(m_socket, &QTcpSocket::disconnected, this, [this]() {
-        qDebug() << "Modbus TCP连接断开";
-        emit tcpDisconnected();
-    });
+    connect(
+        m_socket,
+        &QTcpSocket::disconnected,
+        this,
+        &ModbusTCP::onDisconnected
+        );
 
     connect(m_socket, &QTcpSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError) {
@@ -23,6 +26,17 @@ ModbusTCP::ModbusTCP(QObject *parent)
                 qWarning() << "Modbus TCP连接错误:" << error;
                 emit tcpError(error);
             });
+
+    m_reconnectTimer->setInterval(3000);
+    m_reconnectTimer->setSingleShot(false);
+
+
+    connect(
+        m_reconnectTimer,
+        &QTimer::timeout,
+        this,
+        &ModbusTCP::reconnect
+        );
 
     connect(
         m_socket,
@@ -123,6 +137,43 @@ bool ModbusTCP::sendReadHoldingRegistersRequest(
         );
 
     qint64 bytesWritten = m_socket->write(request);
+
+    // 添加超时检测
+
+    QTimer *timer = new QTimer(this);
+
+    timer->setSingleShot(true);
+
+
+    connect(timer,
+            &QTimer::timeout,
+            this,
+            [this, transactionId, timer]()
+            {
+
+                qWarning()
+                << "Modbus请求超时:"
+                << transactionId;
+
+
+                emit requestTimeout(transactionId);
+
+
+                m_pendingRequests.remove(transactionId);
+
+
+                timer->deleteLater();
+
+            });
+
+
+    m_pendingRequests.insert(
+        transactionId,
+        {timer}
+        );
+
+
+    timer->start(1000);
 
     if (bytesWritten != request.size()) {
         qWarning() << "Modbus TCP请求发送失败";
@@ -292,6 +343,9 @@ void ModbusTCP::connectToDevice(
     const QString &ip,
     quint16 port)
 {
+    m_ip = ip;
+    m_port = port;
+
     auto state = m_socket->state();
 
 
@@ -349,6 +403,26 @@ void ModbusTCP::readData()
 
     while(tryExtractFrame(frame))
     {
+        quint16 transactionId =
+            (static_cast<quint8>(frame[0]) << 8)
+            |
+            static_cast<quint8>(frame[1]);
+
+
+        if(m_pendingRequests.contains(transactionId))
+        {
+            QTimer *timer =
+                m_pendingRequests[transactionId].timer;
+
+
+            timer->stop();
+            timer->deleteLater();
+
+
+            m_pendingRequests.remove(transactionId);
+        }
+
+
         emit dataReceived(frame);
     }
 }
@@ -420,4 +494,48 @@ void ModbusTCP::shutdown()
             m_socket->close();
         }
     }
+}
+
+void ModbusTCP::onDisconnected()
+{
+
+    qWarning()
+    << "Modbus TCP断开";
+
+
+    emit tcpDisconnected();
+
+
+    if(!m_reconnectTimer->isActive())
+    {
+        m_reconnectTimer->start();
+    }
+
+}
+
+void ModbusTCP::reconnect()
+{
+
+    auto state=m_socket->state();
+
+
+    if(state == QAbstractSocket::ConnectedState ||
+        state == QAbstractSocket::ConnectingState ||
+        state == QAbstractSocket::HostLookupState)
+    {
+        return;
+    }
+
+
+    qDebug()
+        <<"尝试重新连接:"
+        <<m_ip
+        <<m_port;
+
+
+    m_socket->connectToHost(
+        m_ip,
+        m_port
+        );
+
 }

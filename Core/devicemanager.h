@@ -89,6 +89,7 @@ public slots:
         const QString &ip,
         quint16 port
         );
+    void onModbusTimeout(quint16 transactionId);
 signals:
     void deviceRemoved(int deviceId);
 
@@ -171,7 +172,7 @@ private:
 
     // 超时
     QTimer *m_tcpTimeoutTimer = nullptr;
-
+    QMap<quint16,int> m_requestDeviceMap;
     // 轮询
     QTimer *m_modbusPollTimer = nullptr;
     QList<int> m_pollDeviceIds;

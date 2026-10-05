@@ -42,7 +42,7 @@ private:
     QMap<int, QList<double>> m_voltageHistory;
     static constexpr int MaxHistoryPoints = 30;
     MockModbusTCPServer *m_mockServer;
-
+    bool m_tcpServerRunning=false;
 private slots:
     void removeDeviceRow(int deviceId);
     void updateDeviceUI(int deviceId,const DeviceData &data);
@@ -56,6 +56,7 @@ private slots:
     void addDeviceRow(int deviceId);
     void on_testBtn_clicked();
     void on_addDeviceBtn_clicked();
+    void on_tcpServerBtn_clicked();
 };
 
 #endif // MAINWINDOW_H
