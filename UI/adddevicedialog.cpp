@@ -1,15 +1,19 @@
 #include "adddevicedialog.h"
 #include "ui_adddevicedialog.h"
+#include "../Communication/serialport.h"
+
 #include <QMessageBox>
 #include <QDebug>
 #include <QHBoxLayout>
 #include <QHostAddress>
+
 
 AddDeviceDialog::AddDeviceDialog(QWidget *parent)
     : QDialog(parent)
     , ui(new Ui::AddDeviceDialog)
 {
     ui->setupUi(this);
+    ui->serialPortComboBox->addItems(SerialPort::availablePorts());
 }
 
 AddDeviceDialog::~AddDeviceDialog()

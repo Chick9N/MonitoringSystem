@@ -135,6 +135,9 @@ private:
         const QByteArray &data
         );
 
+    // 自定义串口协议
+    bool openSerialForDevice(const DeviceConfig &config);
+
     // Modbus
     // Modbus RTU 接收缓冲区
     QByteArray m_modbusBuffer;

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>SerialConfigWindow</class>
- <widget class="QWidget" name="SerialConfigWindow">
+ <class>MockSerialConfigWindow</class>
+ <widget class="QWidget" name="MockSerialConfigWindow">
   <property name="geometry">
    <rect>
     <x>0</x>

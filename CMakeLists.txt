@@ -38,7 +38,6 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/alarm.h
         Core/alarmmanager.h Core/alarmmanager.cpp
         Communication/protocolparser.h Communication/protocolparser.cpp
-        UI/serialconfigwindow.h UI/serialconfigwindow.cpp UI/serialconfigwindow.ui
         Communication/modbusrtu.h Communication/modbusrtu.cpp
         Communication/modbustcp.h Communication/modbustcp.cpp
         Communication/mockmodbustcpserver.h Communication/mockmodbustcpserver.cpp
@@ -48,6 +47,9 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/deviceconfig.h
         Utils/ipv4input.h Utils/ipv4input.cpp
         Utils/simulatedata.h Utils/simulatedata.cpp
+        Communication/mockserialdevice.h Communication/mockserialdevice.cpp
+        UI/mockserialconfigwindow.h UI/mockserialconfigwindow.cpp UI/mockserialconfigwindow.ui
+
 
 
 

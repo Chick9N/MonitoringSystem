@@ -51,7 +51,7 @@ private slots:
     void on_deviceTable_cellDoubleClicked(int row, int column);
 
     void handleAlarm(const AlarmInfo &alarm);
-    void on_serialConfigBtn_clicked();
+    void on_mockSerialConfigBtn_clicked();
 
     void addDeviceRow(int deviceId);
     void on_testBtn_clicked();

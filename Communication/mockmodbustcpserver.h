@@ -10,6 +10,11 @@
 #include <QMap>
 #include <QTimer>
 
+/*
+ *  实际工业设备通信中，通常由你的上位机作为 Modbus TCP 客户端，主动连接设备提供的服务器。
+ *  因此这里建立一个假服务器，上位机系统作为客户端，接收传来的数据。
+ */
+
 
 struct MockDeviceData
 {

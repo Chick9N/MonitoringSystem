@@ -320,6 +320,18 @@ void DeviceManager::addDevice(Device *device)
     if (getDevice(device->id()))
         return;
 
+    // 自定义串口
+    DeviceConfig config = device->config();
+
+    if (!openSerialForDevice(config))
+    {
+        qWarning() << "设备添加失败，串口初始化失败:"
+                   << config.deviceId;
+
+        device->deleteLater();
+        return;
+    }
+
     m_devices.append(device);
 
     connect(device,
@@ -453,6 +465,84 @@ void DeviceManager::stopAll(){
     for(Device* device:m_devices){
         device->stop();
     }
+}
+
+bool DeviceManager::openSerialForDevice(const DeviceConfig &config)
+{
+    if (config.dataSource != DataSource::Serial)
+        return true;
+
+    QSerialPort::DataBits dataBits;
+
+    switch (config.dataBits)
+    {
+    case 5:
+        dataBits = QSerialPort::Data5;
+        break;
+
+    case 6:
+        dataBits = QSerialPort::Data6;
+        break;
+
+    case 7:
+        dataBits = QSerialPort::Data7;
+        break;
+
+    case 8:
+    default:
+        dataBits = QSerialPort::Data8;
+        break;
+    }
+
+    QSerialPort::Parity parity;
+
+    if (config.parity == "Even")
+        parity = QSerialPort::EvenParity;
+    else if (config.parity == "Odd")
+        parity = QSerialPort::OddParity;
+    else
+        parity = QSerialPort::NoParity;
+
+    QSerialPort::StopBits stopBits;
+
+    if (config.stopBits == 2)
+        stopBits = QSerialPort::TwoStop;
+    else
+        stopBits = QSerialPort::OneStop;
+
+    // 如果串口已经打开，暂时认为当前串口就是正在使用的串口
+    if (m_serialPort->isOpen())
+    {
+        return true;
+    }
+
+    if (!openSerialPort(
+            config.serialPort,
+            config.baudRate,
+            dataBits,
+            parity,
+            stopBits))
+    {
+        qWarning() << "打开串口失败:"
+                   << config.serialPort
+                   << m_serialPort->errorString();
+
+        return false;
+    }
+
+    m_dataSource = DataSource::Serial;
+    m_protocolType = config.protocolType;
+
+    m_serialPort->setModbusMode(
+        config.protocolType == ProtocolType::ModbusRTU
+        );
+
+    qDebug() << "DeviceManager串口初始化成功:"
+             << config.serialPort
+             << "波特率:" << config.baudRate
+             << "协议:" << static_cast<int>(config.protocolType);
+
+    return true;
 }
 
 QStringList DeviceManager::availableSerialPorts() const
@@ -799,8 +889,33 @@ void DeviceManager::pollNextDevice()
     }
 
     case ProtocolType::Custom:
-    default:
-        // 自定义串口协议不通过 Modbus 轮询
+    {
+        if (config.dataSource != DataSource::Serial)
+            return;
+
+        if (!m_serialPort->isOpen())
+            return;
+
+        QByteArray request;
+        request.append(static_cast<char>(0xAA));
+        request.append(static_cast<char>(deviceId));
+        request.append(static_cast<char>(0x01));
+        request.append(static_cast<char>(0x55));
+
+        if (!m_serialPort->sendData(request))
+        {
+            qWarning() << "自定义串口请求发送失败:"
+                       << deviceId;
+            return;
+        }
+
+        qDebug() << "发送自定义串口请求:"
+                 << request.toHex(' ').toUpper()
+                 << "设备ID:" << deviceId;
+
+        success = true;
+        break;
+    }
         return;
     }
 

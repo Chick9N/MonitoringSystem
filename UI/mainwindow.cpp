@@ -3,7 +3,7 @@
 #include "../UI/devicewidget.h"
 #include <qtablewidget.h>
 #include "minichartwidget.h"
-#include "serialconfigwindow.h"
+#include "mockserialconfigwindow.h"
 #include <QPushButton>
 #include "adddevicedialog.h"
 #include <QMessageBox>
@@ -618,10 +618,10 @@ void MainWindow::updateAlarmStatistics()
 }
 
 
-void MainWindow::on_serialConfigBtn_clicked()
+void MainWindow::on_mockSerialConfigBtn_clicked()
 {
-    SerialConfigWindow *window =
-        new SerialConfigWindow(deviceManager, this);
+    MockSerialConfigWindow *window =
+        new MockSerialConfigWindow(this);
 
     window->show();
 }

@@ -187,13 +187,6 @@
    <widget class="QWidget" name="dockWidgetContents">
     <layout class="QVBoxLayout" name="verticalLayout_3">
      <item>
-      <widget class="QPushButton" name="serialConfigBtn">
-       <property name="text">
-        <string>串口设备管理</string>
-       </property>
-      </widget>
-     </item>
-     <item>
       <widget class="QPushButton" name="testBtn">
        <property name="text">
         <string>测试按钮</string>
@@ -204,6 +197,13 @@
       <widget class="QPushButton" name="addDeviceBtn">
        <property name="text">
         <string>添加设备</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="mockSerialConfigBtn">
+       <property name="text">
+        <string>模拟串口设备配置</string>
        </property>
       </widget>
      </item>
