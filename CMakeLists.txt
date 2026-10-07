@@ -49,6 +49,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Utils/simulatedata.h Utils/simulatedata.cpp
         Communication/mockserialdevice.h Communication/mockserialdevice.cpp
         UI/mockserialconfigwindow.h UI/mockserialconfigwindow.cpp UI/mockserialconfigwindow.ui
+        Communication/mockmodbusrtudevice.h Communication/mockmodbusrtudevice.cpp
 
 
 

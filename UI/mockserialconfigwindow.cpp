@@ -2,6 +2,7 @@
 #include "ui_mockserialconfigwindow.h"
 
 #include "../Communication/mockserialdevice.h"
+#include "../Communication/mockmodbusrtudevice.h"
 
 #include <QMessageBox>
 #include <QSerialPort>
@@ -11,6 +12,7 @@ MockSerialConfigWindow::MockSerialConfigWindow(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::MockSerialConfigWindow)
     , m_mockDevice(new MockSerialDevice(this))
+    , m_modbusDevice(new MockModbusRTUDevice(this))
 {
     ui->setupUi(this);
 
@@ -18,6 +20,7 @@ MockSerialConfigWindow::MockSerialConfigWindow(QWidget *parent)
     setAttribute(Qt::WA_DeleteOnClose);
 
     setWindowTitle("模拟串口设备配置");
+
 
     // 初始化波特率
     ui->baudRateComboBox->addItems({
@@ -205,6 +208,48 @@ void MockSerialConfigWindow::on_openSerialButton_clicked()
     const qint32 baudRate =
         ui->baudRateComboBox->currentText().toInt();
 
+    // ==============================
+    // Modbus RTU 模式
+    // ==============================
+    if (m_modbusMode)
+    {
+        if (m_modbusDevice->isRunning())
+        {
+            QMessageBox::information(
+                this,
+                "提示",
+                "Modbus RTU 模拟设备已经启动"
+                );
+
+            return;
+        }
+
+        const bool success =
+            m_modbusDevice->start(
+                portName,
+                baudRate
+                );
+
+        if (!success)
+        {
+            QMessageBox::critical(
+                this,
+                "错误",
+                "Modbus RTU 模拟设备串口启动失败"
+                );
+
+            updateSerialStatus();
+
+            return;
+        }
+
+        updateSerialStatus();
+        return;
+    }
+
+    // ==============================
+    // 自定义串口模式
+    // ==============================
     if (m_mockDevice->isRunning())
     {
         QMessageBox::information(
@@ -246,4 +291,13 @@ void MockSerialConfigWindow::on_closeSerialButton_clicked()
     m_mockDevice->stop();
 
     updateSerialStatus();
+}
+
+void MockSerialConfigWindow::on_modbusModeCheckBox_stateChanged(int arg1)
+{
+    m_modbusMode = (arg1 == Qt::Checked);
+
+    qDebug()
+        << "模拟串口模式:"
+        << (m_modbusMode ? "Modbus RTU" : "自定义串口");
 }

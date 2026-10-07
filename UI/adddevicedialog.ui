@@ -101,7 +101,7 @@
          <item>
           <widget class="QStackedWidget" name="configStackedWidget">
            <property name="currentIndex">
-            <number>0</number>
+            <number>2</number>
            </property>
            <widget class="QWidget" name="customPage">
             <layout class="QFormLayout" name="formLayout_4">
@@ -165,7 +165,7 @@
              <item row="2" column="1">
               <widget class="QComboBox" name="dataBitsComboBox">
                <property name="currentText">
-                <string>8</string>
+                <string>5</string>
                </property>
                <item>
                 <property name="text">

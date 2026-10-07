@@ -116,6 +116,13 @@
     </layout>
    </item>
    <item>
+    <widget class="QCheckBox" name="modbusModeCheckBox">
+     <property name="text">
+      <string>Modbus RTU模式</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="horizontalLayout_3">
      <item>
       <widget class="QPushButton" name="openSerialButton">

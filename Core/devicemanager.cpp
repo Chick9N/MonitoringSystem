@@ -320,32 +320,43 @@ void DeviceManager::addDevice(Device *device)
     if (getDevice(device->id()))
         return;
 
-    // 自定义串口
     DeviceConfig config = device->config();
 
-    if (!openSerialForDevice(config))
+    // 串口设备才需要初始化串口
+    if (config.dataSource == DataSource::Serial)
     {
-        qWarning() << "设备添加失败，串口初始化失败:"
-                   << config.deviceId;
+        if (!openSerialForDevice(config))
+        {
+            qWarning()
+            << "设备添加失败，串口初始化失败:"
+            << config.deviceId;
 
-        device->deleteLater();
-        return;
+            device->deleteLater();
+            return;
+        }
     }
 
     m_devices.append(device);
 
-    connect(device,
-            &Device::dataUpdated,
-            this,
-            [this, device](const DeviceData &data) {
-                qDebug() << "DeviceManager 转发数据:"
-                         << device->id()
-                         << data.temperature
-                         << data.voltage
-                         << data.isOnline;
+    connect(
+        device,
+        &Device::dataUpdated,
+        this,
+        [this, device](const DeviceData &data)
+        {
+            qDebug()
+            << "DeviceManager 转发数据:"
+            << device->id()
+            << data.temperature
+            << data.voltage
+            << data.isOnline;
 
-                emit deviceDataUpdated(device->id(), data);
-            });
+            emit deviceDataUpdated(
+                device->id(),
+                data
+                );
+        }
+        );
 
     refreshPollDeviceIds();
 
@@ -469,6 +480,14 @@ void DeviceManager::stopAll(){
 
 bool DeviceManager::openSerialForDevice(const DeviceConfig &config)
 {
+    qDebug()
+    << "DeviceManager准备打开串口:"
+    << "port =" << config.serialPort
+    << "baud =" << config.baudRate
+    << "dataBits =" << config.dataBits
+    << "parity =" << config.parity
+    << "stopBits =" << config.stopBits;
+
     if (config.dataSource != DataSource::Serial)
         return true;
 

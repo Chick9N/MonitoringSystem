@@ -43,6 +43,7 @@ private:
     static constexpr int MaxHistoryPoints = 30;
     MockModbusTCPServer *m_mockServer;
     bool m_tcpServerRunning=false;
+
 private slots:
     void removeDeviceRow(int deviceId);
     void updateDeviceUI(int deviceId,const DeviceData &data);

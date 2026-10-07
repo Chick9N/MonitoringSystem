@@ -14,6 +14,7 @@ AddDeviceDialog::AddDeviceDialog(QWidget *parent)
 {
     ui->setupUi(this);
     ui->serialPortComboBox->addItems(SerialPort::availablePorts());
+    ui->rtuPortComboBox->addItems(SerialPort::availablePorts());
 }
 
 AddDeviceDialog::~AddDeviceDialog()
@@ -74,49 +75,116 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
 {
     DeviceConfig config;
 
+    // ==============================
     // 基本信息
-    config.deviceId = ui->deviceIdSpinBox->value();
-    config.deviceName = ui->nameEdit->text().trimmed();
-    config.protocolType = static_cast<ProtocolType>(
-        ui->protocolComboBox->currentIndex()
-        );
+    // ==============================
+    config.deviceId =
+        ui->deviceIdSpinBox->value();
 
-    // 根据协议确定数据来源
+    config.deviceName =
+        ui->nameEdit->text().trimmed();
+
+    config.protocolType =
+        static_cast<ProtocolType>(
+            ui->protocolComboBox->currentIndex()
+            );
+
+
+    // ==============================
+    // 根据协议读取对应配置
+    // ==============================
     switch (config.protocolType)
     {
+    // ==========================================
+    // 自定义串口协议
+    // ==========================================
     case ProtocolType::Custom:
-    case ProtocolType::ModbusRTU:
-        config.dataSource = DataSource::Serial;
-        break;
+    {
+        config.dataSource =
+            DataSource::Serial;
 
-    case ProtocolType::ModbusTCP:
-        config.dataSource = DataSource::TCP;
+        config.serialPort =
+            ui->serialPortComboBox->currentText();
+
+        config.baudRate =
+            ui->baudRateComboBox->currentText().toInt();
+
+        config.dataBits =
+            ui->dataBitsComboBox->currentText().toInt();
+
+        config.parity =
+            ui->parityComboBox->currentText();
+
+        config.stopBits =
+            ui->stopBitsComboBox->currentText().toInt();
+
         break;
     }
 
-    // 自定义串口配置
-    config.serialPort = ui->serialPortComboBox->currentText();
-    config.baudRate = ui->baudRateComboBox->currentText().toInt();
-    config.dataBits = ui->dataBitsComboBox->currentText().toInt();
-    config.stopBits = ui->stopBitsComboBox->currentText().toInt();
-    config.parity = ui->parityComboBox->currentText();
 
-    // Modbus RTU 配置
-    config.rtuSlaveId = ui->rtuSlaveIdSpinBox->value();
-    config.rtuStartAddress = ui->rtuStartAddressSpinBox->value();
-    config.rtuQuantity = ui->rtuQuantitySpinBox->value();
+        // ==========================================
+        // Modbus RTU
+        // ==========================================
+    case ProtocolType::ModbusRTU:
+    {
+        config.dataSource =
+            DataSource::Serial;
 
-    // Modbus TCP 配置
-    config.tcpIp = ui->ipWidget->address();
-    config.tcpPort = ui->tcpPortSpinBox->value();
-    config.tcpUnitId = ui->tcpUnitIdSpinBox->value();
-    config.tcpStartAddress = ui->tcpStartAddressSpinBox->value();
-    config.tcpQuantity = ui->tcpQuantitySpinBox->value();
+        // 串口基本参数
+        config.serialPort =
+            ui->rtuPortComboBox->currentText();
+
+        config.baudRate =
+            ui->baudRateComboBox->currentText().toInt();
+
+        // 当前项目 RTU 固定使用 8N1
+        config.dataBits = 8;
+        config.parity = "None";
+        config.stopBits = 1;
+
+        // Modbus RTU 参数
+        config.rtuSlaveId =
+            ui->rtuSlaveIdSpinBox->value();
+
+        config.rtuStartAddress =
+            ui->rtuStartAddressSpinBox->value();
+
+        config.rtuQuantity =
+            ui->rtuQuantitySpinBox->value();
+
+        break;
+    }
+
+
+        // ==========================================
+        // Modbus TCP
+        // ==========================================
+    case ProtocolType::ModbusTCP:
+    {
+        config.dataSource =
+            DataSource::TCP;
+
+        config.tcpIp =
+            ui->ipWidget->address();
+
+        config.tcpPort =
+            ui->tcpPortSpinBox->value();
+
+        config.tcpUnitId =
+            ui->tcpUnitIdSpinBox->value();
+
+        config.tcpStartAddress =
+            ui->tcpStartAddressSpinBox->value();
+
+        config.tcpQuantity =
+            ui->tcpQuantitySpinBox->value();
+
+        break;
+    }
+    }
 
     return config;
 }
-
-
 
 void AddDeviceDialog::on_testConnectionBtn_clicked()
 {

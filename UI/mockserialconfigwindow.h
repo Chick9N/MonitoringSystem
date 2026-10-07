@@ -4,6 +4,7 @@
 #include <QWidget>
 
 class MockSerialDevice;
+class MockModbusRTUDevice;
 
 namespace Ui {
 class MockSerialConfigWindow;
@@ -22,6 +23,8 @@ private slots:
     void on_openSerialButton_clicked();
     void on_closeSerialButton_clicked();
 
+    void on_modbusModeCheckBox_stateChanged(int arg1);
+
 private:
     void refreshSerialPorts();
     void updateSerialStatus();
@@ -29,6 +32,8 @@ private:
 private:
     Ui::MockSerialConfigWindow *ui;
     MockSerialDevice *m_mockDevice;
+    MockModbusRTUDevice *m_modbusDevice;
+    bool m_modbusMode = false;
 };
 
 #endif // MOCKSERIALCONFIGWINDOW_H
