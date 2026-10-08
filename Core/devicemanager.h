@@ -3,10 +3,10 @@
 
 #include "device.h"
 #include "alarmmanager.h"
+#include "devicerepository.h"
 #include "../Communication/serialport.h"
 #include "../Communication/modbustcp.h"
 #include "../Core/deviceconfig.h"
-#include "../Data/databasemanager.h"
 #include <QDateTime>
 #include <QMap>
 #include <QTimer>
@@ -19,7 +19,7 @@ class DeviceManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit DeviceManager(DatabaseManager *databaseManager, QObject *parent = nullptr);
+    explicit DeviceManager(DeviceRepository *deviceRepository, QObject *parent = nullptr);
     ~DeviceManager();
     bool addDevice(Device *device);
     void removeDevice(int deviceId);
@@ -106,6 +106,8 @@ private:
     static constexpr int CommunicationTimeoutMs = 5000;
 
     ProtocolType m_protocolType = ProtocolType::Custom;
+    DeviceConfig m_activeSerialConfig;
+    bool m_hasActiveSerialConfig = false;
 
     void handleModbusRTUResponse(
         const QByteArray &data
@@ -116,7 +118,7 @@ private:
         const QByteArray &data
         );
     // 数据库
-    DatabaseManager *m_databaseManager = nullptr;
+    DeviceRepository *m_deviceRepository = nullptr;
 
     // 自定义串口协议
     bool openSerialForDevice(const DeviceConfig &config);

@@ -8,6 +8,7 @@
 #include "../Core/devicedata.h"
 #include "../Core/alarm.h"
 #include "../Core/deviceconfig.h"
+#include "../Core/devicerepository.h"
 
 // 封装一条数据库历史记录
 struct DeviceHistory
@@ -26,7 +27,7 @@ struct DatabaseSnapshot
     QList<AlarmInfo> activeAlarms;
 };
 
-class DatabaseManager : public QObject
+class DatabaseManager : public QObject, public DeviceRepository
 {
     Q_OBJECT;
 
@@ -45,9 +46,7 @@ public:
     int insertDevice(const DeviceConfig &config);
 
     // 删除设备配置
-    bool deleteDevice(int deviceId);
-
-    bool insertDeviceData(int deviceId, const DeviceData &data);
+    bool deleteDevice(int deviceId) override;
 
     // 查询某设备全部历史数据
     QList<DeviceHistory> queryDeviceHistory(int deviceId);
@@ -61,6 +60,11 @@ public:
     void insertAlarm(const AlarmInfo &alarm);
     void deleteAlarmHistory();
 private:
+    friend class DatabaseWriteQueue;
+    static bool insertDeviceData(
+        QSqlDatabase &database,
+        int deviceId,
+        const DeviceData &data);
 
     QSqlDatabase m_database;
 };

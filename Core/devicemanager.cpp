@@ -7,7 +7,7 @@
 #include <QDebug>
 #include <algorithm>
 
-DeviceManager::DeviceManager(DatabaseManager *databaseManager,
+DeviceManager::DeviceManager(DeviceRepository *deviceRepository,
 QObject *parent)
     : QObject(parent)
     , m_alarmManager(new AlarmManager(this))
@@ -15,7 +15,7 @@ QObject *parent)
     , m_modbusThread(new QThread(this))
     , m_tcpTimeoutTimer(new QTimer(this))
     , m_modbusTCP(new ModbusTCP())
-    , m_databaseManager(databaseManager)
+    , m_deviceRepository(deviceRepository)
 // 这里不能给 ModbusTCP 设置 DeviceManager 为 parent，
 // 否则 QObject 不允许将有父对象的实例移动到其他线程。
 {
@@ -376,20 +376,21 @@ void DeviceManager::removeDevice(int deviceId)
     }
 
     // 删除数据库中的设备配置
-    if (m_databaseManager &&
-        !m_databaseManager->deleteDevice(deviceId))
+    if (m_deviceRepository &&
+        !m_deviceRepository->deleteDevice(deviceId))
     {
         qWarning() << "数据库删除设备失败，取消删除:"
                    << deviceId;
         return;
     }
 
-    // 如果当前正在等待该设备的RTU响应，取消请求
+    // 如果当前正在等待该应用设备的 RTU 响应，取消请求。
     if (m_modbusRequestPending &&
-        m_expectedDeviceId == static_cast<quint8>(deviceId)) {
+        m_expectedApplicationDeviceId == deviceId) {
         m_modbusTimeoutTimer->stop();
         m_modbusRequestPending = false;
         m_modbusBuffer.clear();
+        m_expectedApplicationDeviceId = -1;
     }
 
     // 如果当前正在等待该设备的TCP响应，取消请求
@@ -402,6 +403,16 @@ void DeviceManager::removeDevice(int deviceId)
 
     // 从设备列表中移除
     m_devices.removeOne(device);
+
+    const bool hasSerialDevices = std::any_of(
+        m_devices.cbegin(), m_devices.cend(), [](const Device *item) {
+            return item && item->config().dataSource == DataSource::Serial;
+        });
+    if (!hasSerialDevices && m_serialPort->isOpen()) {
+        m_serialPort->close();
+        m_hasActiveSerialConfig = false;
+        m_protocolType = ProtocolType::Custom;
+    }
 
     // 清理设备接收时间
     m_lastReceivedTime.remove(deviceId);
@@ -549,10 +560,30 @@ bool DeviceManager::openSerialForDevice(const DeviceConfig &config)
     else
         stopBits = QSerialPort::OneStop;
 
-    // 如果串口已经打开，暂时认为当前串口就是正在使用的串口
     if (m_serialPort->isOpen())
     {
-        return true;
+        const bool sameConfiguration =
+            m_hasActiveSerialConfig &&
+            m_activeSerialConfig.serialPort.compare(
+                config.serialPort, Qt::CaseInsensitive) == 0 &&
+            m_activeSerialConfig.baudRate == config.baudRate &&
+            m_activeSerialConfig.dataBits == config.dataBits &&
+            m_activeSerialConfig.parity == config.parity &&
+            m_activeSerialConfig.stopBits == config.stopBits &&
+            m_activeSerialConfig.protocolType == config.protocolType;
+
+        if (sameConfiguration)
+            return true;
+
+        qWarning() << "拒绝添加串口配置不兼容的设备。当前串口配置:"
+                   << m_activeSerialConfig.serialPort
+                   << m_activeSerialConfig.baudRate
+                   << static_cast<int>(m_activeSerialConfig.protocolType)
+                   << "请求配置:"
+                   << config.serialPort
+                   << config.baudRate
+                   << static_cast<int>(config.protocolType);
+        return false;
     }
 
     if (!openSerialPort(
@@ -569,6 +600,8 @@ bool DeviceManager::openSerialForDevice(const DeviceConfig &config)
         return false;
     }
 
+    m_activeSerialConfig = config;
+    m_hasActiveSerialConfig = true;
     m_protocolType = config.protocolType;
 
     m_serialPort->setModbusMode(

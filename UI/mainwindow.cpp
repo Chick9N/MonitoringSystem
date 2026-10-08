@@ -13,6 +13,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , databaseManager(new DatabaseManager(this))
+    , databaseWriteQueue(nullptr)
     , timer(new QTimer(this))
     , m_tcpServerService(createTcpServerService(this))
 {
@@ -65,6 +66,8 @@ MainWindow::MainWindow(QWidget *parent)
     // 数据库
     databaseManager->openDatabase();
     databaseManager->createTables();
+    databaseWriteQueue = new DatabaseWriteQueue(
+        databaseManager->databasePath(), this);
 
     // 设备添加 -> MainWindow 表格
     connect(
@@ -97,13 +100,10 @@ MainWindow::MainWindow(QWidget *parent)
         return DatabaseManager::loadStartupSnapshot(databasePath);
     }));
 
-    connect(deviceManager,
-            &DeviceManager::deviceDataUpdated,
-            this,
-            [this](int deviceId, const DeviceData &data){
-                databaseManager->insertDeviceData(deviceId,data);
-            }
-            );
+    connect(deviceManager, &DeviceManager::deviceDataUpdated,
+            this, [this](int deviceId, const DeviceData &data) {
+        databaseWriteQueue->enqueueDeviceData(deviceId, data);
+    });
 
     connect(
         deviceManager,
@@ -340,8 +340,12 @@ void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
 
 MainWindow::~MainWindow()
 {
+    if (timer)
+        timer->stop();
     if (m_startupWatcher && m_startupWatcher->isRunning())
         m_startupWatcher->waitForFinished();
+    delete databaseWriteQueue;
+    databaseWriteQueue = nullptr;
     delete ui;
 }
 

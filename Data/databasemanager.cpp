@@ -499,8 +499,12 @@ bool DatabaseManager::deleteDevice(int deviceId)
     return true;
 }
 
-bool DatabaseManager::insertDeviceData(int deviceId, const DeviceData &data){
-    QSqlQuery query;
+bool DatabaseManager::insertDeviceData(
+    QSqlDatabase &database,
+    int deviceId,
+    const DeviceData &data)
+{
+    QSqlQuery query(database);
 
     query.prepare(R"(
         INSERT INTO device_history

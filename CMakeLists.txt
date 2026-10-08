@@ -26,12 +26,14 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         UI/devicewidget.h UI/devicewidget.cpp UI/devicewidget.ui
 
         Core/devicemanager.h Core/devicemanager.cpp
+        Core/devicerepository.h
         Communication/serialport.h Communication/serialport.cpp
 
         UI/mainwindow.h UI/mainwindow.cpp UI/mainwindow.ui
         Core/device.h Core/device.cpp
         Core/devicedata.h
         Data/databasemanager.h Data/databasemanager.cpp
+        Data/databasewritequeue.h Data/databasewritequeue.cpp
         UI/minichartwidget.h UI/minichartwidget.cpp
         Core/alarm.h
         Core/alarmmanager.h Core/alarmmanager.cpp

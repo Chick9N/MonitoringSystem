@@ -4,6 +4,7 @@
 
 #include "../Core/devicemanager.h"
 #include "../Data/databasemanager.h"
+#include "../Data/databasewritequeue.h"
 #include "../Communication/tcpserverservice.h"
 #include "devicewidget.h"
 
@@ -33,6 +34,7 @@ private:
     Ui::MainWindow *ui;
     DeviceManager *deviceManager;
     DatabaseManager *databaseManager;
+    DatabaseWriteQueue *databaseWriteQueue;
     QTimer *timer;
     QMap<int,int> m_deviceRowMap; // 表格映射 设备ID, 表格行
     QMap<int, DeviceWidget*> m_deviceWidgets; // 判断某个设备有没有已经打开的详情窗口
