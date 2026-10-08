@@ -4,14 +4,111 @@
 #include <QSqlError>
 #include <QDateTime>
 #include <QDebug>
+#include <QThread>
 #include <algorithm>
-
-
 DatabaseManager::DatabaseManager(QObject *parent) : QObject(parent){}
 
 QString DatabaseManager::databasePath() const
 {
     return m_database.databaseName();
+}
+
+DatabaseSnapshot DatabaseManager::loadStartupSnapshot(const QString &databasePath)
+{
+    DatabaseSnapshot snapshot;
+    const QString connectionName = QStringLiteral("startup_read_%1")
+        .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
+        db.setDatabaseName(databasePath);
+        if (!db.open()) {
+            qWarning() << "后台打开数据库失败:" << db.lastError();
+        } else {
+            {
+                QSqlQuery query(db);
+                const QString sql = R"(
+                    SELECT device_id, device_name, data_source, protocol_type,
+                           serial_port, baud_rate, data_bits, stop_bits, parity,
+                           rtu_slave_id, rtu_start_address, rtu_quantity,
+                           tcp_ip, tcp_port, tcp_unit_id, tcp_start_address, tcp_quantity
+                    FROM device
+                    ORDER BY device_id
+                )";
+                if (!query.exec(sql)) {
+                    qWarning() << "后台查询设备失败:" << query.lastError();
+                } else {
+                    while (query.next()) {
+                        DeviceConfig config;
+                        config.deviceId = query.value(0).toInt();
+                        config.deviceName = query.value(1).toString();
+                        config.dataSource = static_cast<DataSource>(query.value(2).toInt());
+                        config.protocolType = static_cast<ProtocolType>(query.value(3).toInt());
+                        config.serialPort = query.value(4).toString();
+                        config.baudRate = query.value(5).toInt();
+                        config.dataBits = query.value(6).toInt();
+                        config.stopBits = query.value(7).toInt();
+                        config.parity = query.value(8).toString();
+                        config.rtuSlaveId = query.value(9).toInt();
+                        config.rtuStartAddress = query.value(10).toInt();
+                        config.rtuQuantity = query.value(11).toInt();
+                        config.tcpIp = query.value(12).toString();
+                        config.tcpPort = query.value(13).toInt();
+                        config.tcpUnitId = query.value(14).toInt();
+                        config.tcpStartAddress = query.value(15).toInt();
+                        config.tcpQuantity = query.value(16).toInt();
+                        snapshot.devices.append(config);
+                    }
+                }
+            }
+
+            auto readAlarms = [&db](const QString &sql, QList<AlarmInfo> &alarms) {
+                QSqlQuery query(db);
+                query.prepare(sql);
+                if (sql.contains(":limit"))
+                    query.bindValue(":limit", 500);
+                if (!query.exec()) {
+                    qWarning() << "后台查询报警失败:" << query.lastError();
+                    return;
+                }
+                while (query.next()) {
+                    AlarmInfo alarm;
+                    alarm.deviceId = query.value(0).toInt();
+                    alarm.type = static_cast<AlarmType>(query.value(1).toInt());
+                    alarm.message = query.value(2).toString();
+                    alarm.recovered = query.value(3).toInt() != 0;
+                    alarm.timestamp = QDateTime::fromString(
+                        query.value(4).toString(), "yyyy-MM-dd HH:mm:ss");
+                    alarms.append(alarm);
+                }
+            };
+
+            readAlarms(R"(
+                SELECT device_id, alarm_type, message, recovered, timestamp
+                FROM alarm_history
+                ORDER BY id DESC
+                LIMIT :limit
+            )", snapshot.alarmHistory);
+            std::reverse(snapshot.alarmHistory.begin(), snapshot.alarmHistory.end());
+
+            readAlarms(R"(
+                SELECT a.device_id, a.alarm_type, a.message, a.recovered, a.timestamp
+                FROM alarm_history a
+                WHERE a.recovered = 0
+                  AND a.id = (
+                      SELECT MAX(b.id)
+                      FROM alarm_history b
+                      WHERE b.device_id = a.device_id
+                        AND b.alarm_type = a.alarm_type
+                  )
+                ORDER BY a.id ASC
+            )", snapshot.activeAlarms);
+        }
+        db.close();
+    }
+
+    QSqlDatabase::removeDatabase(connectionName);
+    return snapshot;
 }
 
 bool DatabaseManager::openDatabase(){
@@ -335,114 +432,6 @@ int DatabaseManager::insertDevice(const DeviceConfig &config)
     return deviceId;
 }
 
-QList<DeviceConfig> DatabaseManager::queryDevices()
-{
-    QList<DeviceConfig> devices;
-
-    QSqlQuery query(m_database);
-
-    query.prepare(R"(
-        SELECT
-            device_id,
-            device_name,
-            data_source,
-            protocol_type,
-            serial_port,
-            baud_rate,
-            data_bits,
-            stop_bits,
-            parity,
-            rtu_slave_id,
-            rtu_start_address,
-            rtu_quantity,
-            tcp_ip,
-            tcp_port,
-            tcp_unit_id,
-            tcp_start_address,
-            tcp_quantity
-        FROM device
-        ORDER BY device_id ASC
-    )");
-
-    if (!query.exec())
-    {
-        qDebug()
-        << "查询设备配置失败:"
-        << query.lastError();
-
-        return devices;
-    }
-
-    while (query.next())
-    {
-        DeviceConfig config;
-
-        config.deviceId =
-            query.value("device_id").toInt();
-
-        config.deviceName =
-            query.value("device_name").toString();
-
-        config.dataSource =
-            static_cast<DataSource>(
-                query.value("data_source").toInt()
-                );
-
-        config.protocolType =
-            static_cast<ProtocolType>(
-                query.value("protocol_type").toInt()
-                );
-
-        config.serialPort =
-            query.value("serial_port").toString();
-
-        config.baudRate =
-            query.value("baud_rate").toInt();
-
-        config.dataBits =
-            query.value("data_bits").toInt();
-
-        config.stopBits =
-            query.value("stop_bits").toInt();
-
-        config.parity =
-            query.value("parity").toString();
-
-        config.rtuSlaveId =
-            query.value("rtu_slave_id").toInt();
-
-        config.rtuStartAddress =
-            query.value("rtu_start_address").toInt();
-
-        config.rtuQuantity =
-            query.value("rtu_quantity").toInt();
-
-        config.tcpIp =
-            query.value("tcp_ip").toString();
-
-        config.tcpPort =
-            query.value("tcp_port").toInt();
-
-        config.tcpUnitId =
-            query.value("tcp_unit_id").toInt();
-
-        config.tcpStartAddress =
-            query.value("tcp_start_address").toInt();
-
-        config.tcpQuantity =
-            query.value("tcp_quantity").toInt();
-
-        devices.append(config);
-    }
-
-    qDebug()
-        << "读取设备配置成功:"
-        << devices.size()
-        << "个设备";
-
-    return devices;
-}
-
 bool DatabaseManager::deleteDevice(int deviceId)
 {
     if (!m_database.transaction()) {
@@ -508,35 +497,6 @@ bool DatabaseManager::deleteDevice(int deviceId)
         << "ID =" << deviceId;
 
     return true;
-}
-
-bool DatabaseManager::deviceExists(int deviceId)
-{
-    QSqlQuery query(m_database);
-
-    query.prepare(R"(
-        SELECT 1
-        FROM device
-        WHERE device_id = :device_id
-        LIMIT 1
-    )");
-
-    query.bindValue(
-        ":device_id",
-        deviceId
-        );
-
-    if (!query.exec())
-    {
-        qDebug()
-        << "检查设备是否存在失败:"
-        << "ID =" << deviceId
-        << query.lastError();
-
-        return false;
-    }
-
-    return query.next();
 }
 
 bool DatabaseManager::insertDeviceData(int deviceId, const DeviceData &data){
@@ -702,82 +662,6 @@ QList<DeviceHistory> DatabaseManager::queryDeviceHistory(
     return historyList;
 }
 
-DeviceHistory DatabaseManager::queryLatestDeviceData(int deviceId)
-{
-    DeviceHistory history;
-
-    QSqlQuery query;
-
-    query.prepare(R"(
-        SELECT
-            id,
-            device_id,
-            temperature,
-            voltage,
-            online,
-            timestamp
-        FROM device_history
-        WHERE device_id = :device_id
-        ORDER BY timestamp DESC
-        LIMIT 1
-    )");
-
-    query.bindValue(":device_id", deviceId);
-
-    if (!query.exec())
-    {
-        qDebug() << "查询最新设备数据失败:"
-                 << query.lastError();
-
-        return history;
-    }
-
-    if (query.next())
-    {
-        history.id = query.value("id").toInt();
-        history.deviceId = query.value("device_id").toInt();
-
-        history.data.temperature =
-            query.value("temperature").toDouble();
-
-        history.data.voltage =
-            query.value("voltage").toDouble();
-
-        history.data.isOnline =
-            query.value("online").toBool();
-
-        history.timestamp =
-            QDateTime::fromString(
-                query.value("timestamp").toString(),
-                "yyyy-MM-dd HH:mm:ss"
-                );
-    }
-
-    return history;
-}
-
-bool DatabaseManager::deleteDeviceHistory(int deviceId)
-{
-    QSqlQuery query;
-
-    query.prepare(R"(
-        DELETE FROM device_history
-        WHERE device_id = :device_id
-    )");
-
-    query.bindValue(":device_id", deviceId);
-
-    if (!query.exec())
-    {
-        qDebug() << "删除设备历史数据失败:"
-                 << query.lastError();
-
-        return false;
-    }
-
-    return true;
-}
-
 void DatabaseManager::insertAlarm(const AlarmInfo &alarm)
 {
     QSqlQuery query(m_database);
@@ -802,128 +686,6 @@ void DatabaseManager::insertAlarm(const AlarmInfo &alarm)
         qDebug() << "插入报警记录失败："
                  << query.lastError().text();
     }
-}
-
-QList<AlarmInfo> DatabaseManager::queryAlarmHistory()
-{
-    return queryAlarmHistory(500);
-}
-
-QList<AlarmInfo> DatabaseManager::queryAlarmHistory(int limit)
-{
-    QList<AlarmInfo> alarms;
-
-    QSqlQuery query(m_database);
-
-    query.prepare(
-        "SELECT device_id, alarm_type, message, recovered, timestamp "
-        "FROM alarm_history "
-        "ORDER BY id DESC "
-        "LIMIT :limit"
-        );
-    query.bindValue(":limit", qMax(1, limit));
-
-    if (!query.exec())
-    {
-        qDebug() << "查询报警历史失败:"
-                 << query.lastError().text();
-
-        return alarms;
-    }
-
-    while (query.next())
-    {
-        AlarmInfo alarm;
-
-        alarm.deviceId =
-            query.value("device_id").toInt();
-
-        alarm.type =
-            static_cast<AlarmType>(
-                query.value("alarm_type").toInt()
-                );
-
-        alarm.message =
-            query.value("message").toString();
-
-        alarm.recovered =
-            query.value("recovered").toInt() != 0;
-
-        alarm.timestamp =
-            QDateTime::fromString(
-                query.value("timestamp").toString(),
-                "yyyy-MM-dd HH:mm:ss"
-                );
-
-        alarms.append(alarm);
-    }
-
-    std::reverse(alarms.begin(), alarms.end());
-
-    return alarms;
-}
-
-QList<AlarmInfo> DatabaseManager::queryActiveAlarms()
-{
-    QList<AlarmInfo> alarms;
-
-    QSqlQuery query(m_database);
-
-    query.prepare(R"(
-        SELECT a.device_id,
-               a.alarm_type,
-               a.message,
-               a.recovered,
-               a.timestamp
-        FROM alarm_history a
-        WHERE a.id = (
-            SELECT b.id
-            FROM alarm_history b
-            WHERE b.device_id = a.device_id
-              AND b.alarm_type = a.alarm_type
-            ORDER BY b.id DESC
-            LIMIT 1
-        )
-        AND a.recovered = 0
-        ORDER BY a.timestamp ASC
-    )");
-
-    if (!query.exec())
-    {
-        qDebug() << "查询当前报警失败:"
-                 << query.lastError().text();
-
-        return alarms;
-    }
-
-    while (query.next())
-    {
-        AlarmInfo alarm;
-
-        alarm.deviceId =
-            query.value("device_id").toInt();
-
-        alarm.type =
-            static_cast<AlarmType>(
-                query.value("alarm_type").toInt()
-                );
-
-        alarm.message =
-            query.value("message").toString();
-
-        alarm.recovered =
-            query.value("recovered").toInt() != 0;
-
-        alarm.timestamp =
-            QDateTime::fromString(
-                query.value("timestamp").toString(),
-                "yyyy-MM-dd HH:mm:ss"
-                );
-
-        alarms.append(alarm);
-    }
-
-    return alarms;
 }
 
 void DatabaseManager::deleteAlarmHistory()

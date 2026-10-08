@@ -34,8 +34,6 @@ public:
     void stopAll();
 
     // 串口相关接口
-    QStringList availableSerialPorts() const;
-
     bool openSerialPort(
         const QString &portName,
         qint32 baudRate = QSerialPort::Baud9600,
@@ -44,9 +42,6 @@ public:
         QSerialPort::StopBits stopBits = QSerialPort::OneStop
         );
 
-    void closeSerialPort();
-
-    bool isSerialPortOpen() const;
     // Modbus RTU
     // Modbus RTU 读取保持寄存器
     bool requestModbusRead(
@@ -68,21 +63,6 @@ public:
         quint16 quantity,
         int applicationDeviceId
         );
-
-    // 信源
-    void setDataSource(DataSource source);
-    DataSource dataSource() const;
-
-    // 协议
-    void setProtocolType(ProtocolType type);
-    ProtocolType protocolType() const;
-
-    // 测试入口
-    void simulateSerialData(const QByteArray &data);
-    void simulateModbusResponse(const QByteArray &data);
-    void setModbusSimulationMode(bool enabled);
-
-    void setAutoModbusResponse(bool enabled);
 
 public slots:
     void updateAllDevices();
@@ -119,7 +99,6 @@ private:
     QList<Device*> m_devices; // 设备容器
     AlarmManager *m_alarmManager;
     SerialPort *m_serialPort;
-    DataSource m_dataSource = DataSource::Simulation;
 
     QMap<int, QDateTime> m_lastReceivedTime;
     QTimer *m_timeoutTimer = nullptr;
@@ -179,7 +158,6 @@ private:
 
     // 超时
     QTimer *m_tcpTimeoutTimer = nullptr;
-    QMap<quint16,int> m_requestDeviceMap;
     // 轮询
     QTimer *m_modbusPollTimer = nullptr;
     QList<int> m_pollDeviceIds;
@@ -187,19 +165,10 @@ private:
     void refreshPollDeviceIds();
     void pollNextDevice();
 
-    bool m_modbusSimulationMode = false;
     void handleModbusRawData(const QByteArray &data);
 
     // 多线程
     QThread *m_modbusThread = nullptr;
-
-    // 测试
-    // 从站
-    QByteArray buildSimulatedModbusResponse(
-        quint8 slaveAddress,
-        quint16 quantity
-        );
-    bool m_autoModbusResponse = true;
 
 private slots:
     void checkDeviceTimeout();

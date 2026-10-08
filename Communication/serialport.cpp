@@ -185,14 +185,3 @@ QString SerialPort::errorString() const
 {
     return m_serialPort->errorString();
 }
-
-void SerialPort::simulateReceive(const QByteArray &data)
-{
-    m_buffer.append(data);
-    processBuffer();
-}
-
-void SerialPort::simulateRawReceive(const QByteArray &data)
-{
-    emit rawDataReceived(data);
-}

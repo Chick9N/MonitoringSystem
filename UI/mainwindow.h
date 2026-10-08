@@ -14,13 +14,6 @@
 #include <QMainWindow>
 #include <QFutureWatcher>
 
-struct StartupData {
-    QList<DeviceConfig> devices;
-    QList<AlarmInfo> alarmHistory;
-    QList<AlarmInfo> activeAlarms;
-};
-
-
 namespace Ui {
 class MainWindow;
 }
@@ -35,8 +28,6 @@ public:
     int findCurrentAlarm(
         int deviceId,
         AlarmType type) const;
-    void loadAlarmHistory();
-    void loadCurrentAlarms();
     void updateAlarmStatistics();
 private:
     Ui::MainWindow *ui;
@@ -50,9 +41,8 @@ private:
     static constexpr int MaxHistoryPoints = 30;
     MockModbusTCPServer *m_mockServer;
     bool m_tcpServerRunning=false;
-    QFutureWatcher<StartupData> *m_startupWatcher = nullptr;
-    void loadDevicesFromDatabase();
-    void applyStartupData(const StartupData &data);
+    QFutureWatcher<DatabaseSnapshot> *m_startupWatcher = nullptr;
+    void applyStartupData(const DatabaseSnapshot &data);
 
 private slots:
     void removeDeviceRow(int deviceId);

@@ -569,7 +569,6 @@ bool DeviceManager::openSerialForDevice(const DeviceConfig &config)
         return false;
     }
 
-    m_dataSource = DataSource::Serial;
     m_protocolType = config.protocolType;
 
     m_serialPort->setModbusMode(
@@ -582,16 +581,6 @@ bool DeviceManager::openSerialForDevice(const DeviceConfig &config)
              << "协议:" << static_cast<int>(config.protocolType);
 
     return true;
-}
-
-QStringList DeviceManager::availableSerialPorts() const
-{
-    return SerialPort::availablePorts();
-}
-
-bool DeviceManager::isSerialPortOpen() const
-{
-    return m_serialPort->isOpen();
 }
 
 bool DeviceManager::openSerialPort(
@@ -610,34 +599,16 @@ bool DeviceManager::openSerialPort(
         );
 }
 
-void DeviceManager::closeSerialPort()
-{
-    m_serialPort->close();
-}
-
-void DeviceManager::setDataSource(DataSource source)
-{
-    m_dataSource = source;
-}
-
-DataSource DeviceManager::dataSource() const
-{
-    return m_dataSource;
-}
-
-
-
 void DeviceManager::checkDeviceTimeout()
 {
-    // 仅对串口模式下的设备进行超时检测
-    if (m_dataSource != DataSource::Serial)
-        return;
-
     const QDateTime now = QDateTime::currentDateTime();
 
     for (Device *device : m_devices)
     {
         if (!device)
+            continue;
+
+        if (device->config().dataSource != DataSource::Serial)
             continue;
 
         int deviceId = device->id();
@@ -667,27 +638,6 @@ void DeviceManager::checkDeviceTimeout()
     }
 }
 
-void DeviceManager::setProtocolType(
-    ProtocolType type)
-{
-    m_protocolType=type;
-
-
-    if(type == ProtocolType::ModbusRTU)
-    {
-        m_serialPort->setModbusMode(true);
-    }
-    else
-    {
-        m_serialPort->setModbusMode(false);
-    }
-}
-
-ProtocolType DeviceManager::protocolType() const
-{
-    return m_protocolType;
-}
-
 bool DeviceManager::requestModbusRead(
     quint8 slaveAddress,
     quint16 startAddress,
@@ -695,12 +645,8 @@ bool DeviceManager::requestModbusRead(
     int applicationDeviceId
     )
 {
-    // 确认当前为串口数据源
-    if (m_dataSource != DataSource::Serial)
-        return false;
-
     // 确认串口已打开
-    if (!m_modbusSimulationMode && !m_serialPort->isOpen())
+    if (!m_serialPort->isOpen())
         return false;
 
     // 当前请求尚未完成，不允许重复发送
@@ -726,38 +672,10 @@ bool DeviceManager::requestModbusRead(
     m_modbusRequestPending = true;
 
     // 发送请求
-    if (!m_modbusSimulationMode) {
-        if (!m_serialPort->sendData(request)) {
-            m_modbusRequestPending = false;
-            m_modbusBuffer.clear();
-            return false;
-        }
-    } else {
-        qDebug() << "模拟 Modbus RTU 请求:"
-                 << request.toHex(' ');
-
-        QTimer::singleShot(100, this,
-                           [this, slaveAddress, quantity]() {
-                               if (!m_modbusSimulationMode ||
-                                   !m_modbusRequestPending ||
-                                   m_expectedDeviceId != slaveAddress) {
-                                   return;
-                               }
-
-                               QByteArray response =
-                                   buildSimulatedModbusResponse(
-                                       slaveAddress,
-                                       quantity
-                                       );
-
-                               if (response.isEmpty())
-                                   return;
-
-                               qDebug() << "模拟从站响应:"
-                                        << response.toHex(' ');
-
-                               simulateModbusResponse(response);
-                           });
+    if (!m_serialPort->sendData(request)) {
+        m_modbusRequestPending = false;
+        m_modbusBuffer.clear();
+        return false;
     }
 
     // 启动请求超时计时
@@ -865,16 +783,12 @@ void DeviceManager::pollNextDevice()
         // RTU 使用串口或模拟数据源
         if (config.dataSource == DataSource::Serial)
         {
-            if (!m_modbusSimulationMode &&
-                !m_serialPort->isOpen())
-            {
+            if (!m_serialPort->isOpen())
                 return;
-            }
         }
         else if (config.dataSource == DataSource::Simulation)
         {
-            if (!m_modbusSimulationMode)
-                return;
+            return;
         }
         else
         {
@@ -1140,101 +1054,6 @@ bool DeviceManager::requestModbusTCPRead(
     m_tcpTimeoutTimer->start(3000);
 
     return true;
-}
-
-// 测试入口相关
-void DeviceManager::simulateSerialData(const QByteArray &data)
-{
-    m_serialPort->simulateReceive(data);
-}
-
-void DeviceManager::simulateModbusResponse(const QByteArray &data)
-{
-    if (!m_modbusSimulationMode) {
-        qWarning() << "当前未开启 Modbus 模拟模式";
-        return;
-    }
-
-    if (!m_modbusRequestPending) {
-        qWarning() << "当前没有待处理的 Modbus 请求";
-        return;
-    }
-
-    handleModbusRawData(data);
-}
-
-QByteArray DeviceManager::buildSimulatedModbusResponse(
-    quint8 slaveAddress,
-    quint16 quantity)
-{
-    if (quantity == 0 || quantity > 125)
-        return {};
-
-    // 模拟寄存器数据
-    QVector<quint16> registers;
-
-    // 不同从站使用不同的测试数据
-    switch (slaveAddress) {
-    case 1:
-        registers = {256, 220, 1};  // 25.6℃、220V、在线
-        break;
-
-    case 2:
-        registers = {315, 225, 1};  // 31.5℃、225V、在线
-        break;
-
-    case 3:
-        registers = {280, 215, 1};  // 28.0℃、215V、在线
-        break;
-
-    default:
-        registers = {300, 220, 1};
-        break;
-    }
-
-    // 补足请求的寄存器数量
-    while (registers.size() < quantity)
-        registers.append(0);
-
-    // 生成响应帧
-    QByteArray response;
-    response.append(static_cast<char>(slaveAddress));
-    response.append(static_cast<char>(0x03));
-    response.append(static_cast<char>(quantity * 2));
-
-    for (int i = 0; i < quantity; ++i) {
-        response.append(
-            static_cast<char>((registers[i] >> 8) & 0xFF)
-            );
-        response.append(
-            static_cast<char>(registers[i] & 0xFF)
-            );
-    }
-
-    // 添加 Modbus CRC，低字节在前
-    quint16 crc = ModbusRTU::calculateCRC(response);
-
-    response.append(static_cast<char>(crc & 0xFF));
-    response.append(static_cast<char>((crc >> 8) & 0xFF));
-
-    return response;
-}
-
-void DeviceManager::setModbusSimulationMode(bool enabled)
-{
-    m_modbusSimulationMode = enabled;
-
-    if (enabled) {
-        m_dataSource = DataSource::Serial;
-    }
-
-    qDebug() << "Modbus 模拟模式:"
-             << (enabled ? "开启" : "关闭");
-}
-
-void DeviceManager::setAutoModbusResponse(bool enabled)
-{
-    m_autoModbusResponse = enabled;
 }
 
 void DeviceManager::testTCPConnection(

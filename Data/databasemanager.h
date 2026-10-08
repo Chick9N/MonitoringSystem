@@ -19,6 +19,13 @@ struct DeviceHistory
     QDateTime timestamp;
 };
 
+struct DatabaseSnapshot
+{
+    QList<DeviceConfig> devices;
+    QList<AlarmInfo> alarmHistory;
+    QList<AlarmInfo> activeAlarms;
+};
+
 class DatabaseManager : public QObject
 {
     Q_OBJECT;
@@ -31,19 +38,14 @@ public:
     void closeDatabase();
 
     bool createTables();
+    static DatabaseSnapshot loadStartupSnapshot(const QString &databasePath);
 
     // 设备配置管理
-    // 返回数据库自动分配的设备 ID，失败返回 -1
+    // 返回当前最小可用设备 ID，失败返回 -1
     int insertDevice(const DeviceConfig &config);
-
-    // 查询所有已保存的设备配置
-    QList<DeviceConfig> queryDevices();
 
     // 删除设备配置
     bool deleteDevice(int deviceId);
-
-    // 判断设备是否存在
-    bool deviceExists(int deviceId);
 
     bool insertDeviceData(int deviceId, const DeviceData &data);
 
@@ -56,16 +58,7 @@ public:
         const QDateTime &startTime,
         const QDateTime &endTime);
 
-    // 查询某设备最新一条数据
-    DeviceHistory queryLatestDeviceData(int deviceId);
-
-    // 删除某设备全部历史数据
-    bool deleteDeviceHistory(int deviceId);
-
     void insertAlarm(const AlarmInfo &alarm);
-    QList<AlarmInfo> queryAlarmHistory();
-    QList<AlarmInfo> queryAlarmHistory(int limit);
-    QList<AlarmInfo> queryActiveAlarms();
     void deleteAlarmHistory();
 private:
 

@@ -28,10 +28,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/devicemanager.h Core/devicemanager.cpp
         Communication/serialport.h Communication/serialport.cpp
 
-        Utils/logger.h Utils/logger.cpp
         UI/mainwindow.h UI/mainwindow.cpp UI/mainwindow.ui
         Core/device.h Core/device.cpp
-        Core/DeviceData.h
         Core/devicedata.h
         Data/databasemanager.h Data/databasemanager.cpp
         UI/minichartwidget.h UI/minichartwidget.cpp
@@ -41,9 +39,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Communication/modbusrtu.h Communication/modbusrtu.cpp
         Communication/modbustcp.h Communication/modbustcp.cpp
         Communication/mockmodbustcpserver.h Communication/mockmodbustcpserver.cpp
-        UI/adddevicedialog.h UI/adddevicedialog.cpp
         UI/adddevicedialog.h UI/adddevicedialog.cpp UI/adddevicedialog.ui
-        Core/DeviceConfig.h
         Core/deviceconfig.h
         Utils/ipv4input.h Utils/ipv4input.cpp
         Utils/simulatedata.h Utils/simulatedata.cpp
