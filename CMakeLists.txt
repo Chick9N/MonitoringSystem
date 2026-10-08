@@ -39,6 +39,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Communication/modbusrtu.h Communication/modbusrtu.cpp
         Communication/modbustcp.h Communication/modbustcp.cpp
         Communication/mockmodbustcpserver.h Communication/mockmodbustcpserver.cpp
+        Communication/tcpserverservice.h Communication/tcpserverservice.cpp
         UI/adddevicedialog.h UI/adddevicedialog.cpp UI/adddevicedialog.ui
         Core/deviceconfig.h
         Utils/ipv4input.h Utils/ipv4input.cpp

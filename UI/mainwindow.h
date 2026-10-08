@@ -4,7 +4,7 @@
 
 #include "../Core/devicemanager.h"
 #include "../Data/databasemanager.h"
-#include "../Communication/mockmodbustcpserver.h"
+#include "../Communication/tcpserverservice.h"
 #include "devicewidget.h"
 
 
@@ -39,8 +39,7 @@ private:
     QMap<int, QList<double>> m_temperatureHistory;
     QMap<int, QList<double>> m_voltageHistory;
     static constexpr int MaxHistoryPoints = 30;
-    MockModbusTCPServer *m_mockServer;
-    bool m_tcpServerRunning=false;
+    TcpServerService *m_tcpServerService;
     QFutureWatcher<DatabaseSnapshot> *m_startupWatcher = nullptr;
     void applyStartupData(const DatabaseSnapshot &data);
 

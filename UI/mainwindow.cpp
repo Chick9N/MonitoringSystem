@@ -14,7 +14,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , databaseManager(new DatabaseManager(this))
     , timer(new QTimer(this))
-    , m_mockServer(new MockModbusTCPServer(this))
+    , m_tcpServerService(createTcpServerService(this))
 {
     deviceManager= new DeviceManager(databaseManager, this);
 
@@ -74,6 +74,17 @@ MainWindow::MainWindow(QWidget *parent)
         &MainWindow::addDeviceRow
         );
 
+    connect(m_tcpServerService, &TcpServerService::stateChanged,
+            this, [this](bool running, const QString &message) {
+        ui->tcpServerBtn->setText(running ? "关闭TCP服务器" : "启动TCP服务器");
+        ui->tcpStatusLabel->setText(message);
+    });
+    connect(m_tcpServerService, &TcpServerService::errorOccurred,
+            this, [this](const QString &message) {
+        ui->tcpStatusLabel->setText("TCP服务器启动失败");
+        QMessageBox::warning(this, "TCP服务器", message);
+    });
+
     // 启动时的数据库查询放入后台线程；该线程使用独立 SQLite 连接。
     m_startupWatcher = new QFutureWatcher<DatabaseSnapshot>(this);
     connect(m_startupWatcher, &QFutureWatcher<DatabaseSnapshot>::finished,
@@ -100,11 +111,6 @@ MainWindow::MainWindow(QWidget *parent)
         this,
         &MainWindow::handleAlarm
         );
-
-    // 服务器
-    //if (!m_mockServer->start(1502)) {
-    //    qWarning() << "模拟服务器启动失败";
-    //}
 
 }
 
@@ -743,55 +749,10 @@ void MainWindow::on_addDeviceBtn_clicked()
 
 void MainWindow::on_tcpServerBtn_clicked()
 {
-
-    if(!m_tcpServerRunning)
-    {
-
-        if(m_mockServer->start(1502))
-        {
-            m_tcpServerRunning=true;
-
-
-            ui->tcpServerBtn
-                ->setText("关闭TCP服务器");
-
-
-            ui->tcpStatusLabel
-                ->setText(
-                    "TCP服务器运行中"
-                    );
-
-
-            qDebug()
-                <<"启动Modbus TCP服务器";
-
-        }
-
-    }
+    if (m_tcpServerService->isRunning())
+        m_tcpServerService->stop();
     else
-    {
-
-        m_mockServer->stop();
-
-
-        m_tcpServerRunning=false;
-
-
-        ui->tcpServerBtn
-            ->setText("启动TCP服务器");
-
-
-        ui->tcpStatusLabel
-            ->setText(
-                "TCP服务器已关闭"
-                );
-
-
-        qDebug()
-            <<"关闭Modbus TCP服务器";
-
-    }
-
+        m_tcpServerService->start(1502);
 }
 
 void MainWindow::applyStartupData(const DatabaseSnapshot &data)

@@ -9,6 +9,7 @@
 #include <QHash>
 #include <QMap>
 #include <QTimer>
+#include <QString>
 
 /*
  *  实际工业设备通信中，通常由你的上位机作为 Modbus TCP 客户端，主动连接设备提供的服务器。
@@ -32,6 +33,8 @@ public:
     // 启动和停止模拟服务器
     bool start(quint16 port = 1502);
     void stop();
+    bool isRunning() const;
+    QString errorString() const;
     void processRequest(QTcpSocket *socket, const QByteArray &frame);
 
 signals:
@@ -52,6 +55,7 @@ private:
     QMap<quint8, MockDeviceData> m_devices;
 
     QTimer *m_updateTimer;
+    QString m_lastError;
 
 };
 

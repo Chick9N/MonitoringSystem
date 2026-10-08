@@ -79,15 +79,28 @@ bool MockModbusTCPServer::start(quint16 port)
     }
 
     if (!m_server->listen(QHostAddress::Any, port)) {
+        m_lastError = m_server->errorString();
         qWarning() << "Modbus TCP服务器启动失败:"
-                   << m_server->errorString();
+                   << m_lastError;
         return false;
     }
+
+    m_lastError.clear();
 
     qDebug() << "Modbus TCP服务器已启动，端口:"
              << m_server->serverPort();
 
     return true;
+}
+
+bool MockModbusTCPServer::isRunning() const
+{
+    return m_server->isListening();
+}
+
+QString MockModbusTCPServer::errorString() const
+{
+    return m_lastError;
 }
 
 void MockModbusTCPServer::stop()
