@@ -6,6 +6,7 @@
 #include "../Communication/serialport.h"
 #include "../Communication/modbustcp.h"
 #include "../Core/deviceconfig.h"
+#include "../Data/databasemanager.h"
 #include <QDateTime>
 #include <QMap>
 #include <QTimer>
@@ -18,9 +19,9 @@ class DeviceManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit DeviceManager(QObject *parent = nullptr);
+    explicit DeviceManager(DatabaseManager *databaseManager, QObject *parent = nullptr);
     ~DeviceManager();
-    void addDevice(Device *device);
+    bool addDevice(Device *device);
     void removeDevice(int deviceId);
     Device* getDevice(int deviceId);
     QList<Device*> devices() const;
@@ -85,6 +86,7 @@ public:
 
 public slots:
     void updateAllDevices();
+    void startPolling();
     void testTCPConnection(
         const QString &ip,
         quint16 port
@@ -134,6 +136,8 @@ private:
     void handleModbusTCPResponse(
         const QByteArray &data
         );
+    // 数据库
+    DatabaseManager *m_databaseManager = nullptr;
 
     // 自定义串口协议
     bool openSerialForDevice(const DeviceConfig &config);

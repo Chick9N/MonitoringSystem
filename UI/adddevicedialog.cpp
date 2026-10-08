@@ -13,6 +13,8 @@ AddDeviceDialog::AddDeviceDialog(QWidget *parent)
     , ui(new Ui::AddDeviceDialog)
 {
     ui->setupUi(this);
+    // Modbus TCP 的 Unit Identifier 不能为 0（本系统也不支持广播请求）。
+    ui->tcpUnitIdSpinBox->setRange(1, 255);
     ui->serialPortComboBox->addItems(SerialPort::availablePorts());
     ui->rtuPortComboBox->addItems(SerialPort::availablePorts());
 }
@@ -65,6 +67,16 @@ void AddDeviceDialog::accept()
                 );
             return;
         }
+
+        if (ui->tcpUnitIdSpinBox->value() < 1 ||
+            ui->tcpUnitIdSpinBox->value() > 247) {
+            QMessageBox::warning(
+                this,
+                "输入错误",
+                "Modbus TCP 单元 ID 必须在 1 到 247 之间。"
+                );
+            return;
+        }
     }
 
     // 校验通过，关闭表单并返回 Accepted
@@ -78,8 +90,8 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
     // ==============================
     // 基本信息
     // ==============================
-    config.deviceId =
-        ui->deviceIdSpinBox->value();
+
+    // 不设置deviceId
 
     config.deviceName =
         ui->nameEdit->text().trimmed();

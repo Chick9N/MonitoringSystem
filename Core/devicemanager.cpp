@@ -7,13 +7,15 @@
 #include <QDebug>
 #include <algorithm>
 
-DeviceManager::DeviceManager(QObject *parent)
+DeviceManager::DeviceManager(DatabaseManager *databaseManager,
+QObject *parent)
     : QObject(parent)
     , m_alarmManager(new AlarmManager(this))
     , m_serialPort(new SerialPort(this))
     , m_modbusThread(new QThread(this))
     , m_tcpTimeoutTimer(new QTimer(this))
     , m_modbusTCP(new ModbusTCP())
+    , m_databaseManager(databaseManager)
 // 这里不能给 ModbusTCP 设置 DeviceManager 为 parent，
 // 否则 QObject 不允许将有父对象的实例移动到其他线程。
 {
@@ -128,7 +130,7 @@ DeviceManager::DeviceManager(QObject *parent)
             this,
             &DeviceManager::pollNextDevice);
 
-    m_modbusPollTimer->start(1000);
+    // 初始化设备列表完成后由 MainWindow 启动轮询。
 
     // 服务器
     // 多线程
@@ -312,13 +314,13 @@ DeviceManager::~DeviceManager()
     }
 }
 
-void DeviceManager::addDevice(Device *device)
+bool DeviceManager::addDevice(Device *device)
 {
     if (!device)
-        return;
+        return false;
 
     if (getDevice(device->id()))
-        return;
+        return false;
 
     DeviceConfig config = device->config();
 
@@ -332,7 +334,7 @@ void DeviceManager::addDevice(Device *device)
             << config.deviceId;
 
             device->deleteLater();
-            return;
+            return false;
         }
     }
 
@@ -361,6 +363,8 @@ void DeviceManager::addDevice(Device *device)
     refreshPollDeviceIds();
 
     emit deviceAdded(device->id());
+
+    return true;
 }
 
 void DeviceManager::removeDevice(int deviceId)
@@ -368,6 +372,15 @@ void DeviceManager::removeDevice(int deviceId)
     Device* device = getDevice(deviceId);
 
     if (!device) {
+        return;
+    }
+
+    // 删除数据库中的设备配置
+    if (m_databaseManager &&
+        !m_databaseManager->deleteDevice(deviceId))
+    {
+        qWarning() << "数据库删除设备失败，取消删除:"
+                   << deviceId;
         return;
     }
 
@@ -381,9 +394,10 @@ void DeviceManager::removeDevice(int deviceId)
 
     // 如果当前正在等待该设备的TCP响应，取消请求
     if (m_tcpRequestPending &&
-        m_tcpExpectedUnitId == static_cast<quint8>(deviceId)) {
+        m_tcpExpectedApplicationDeviceId == deviceId) {
         m_tcpTimeoutTimer->stop();
         m_tcpRequestPending = false;
+        m_tcpExpectedApplicationDeviceId = -1;
     }
 
     // 从设备列表中移除
@@ -463,6 +477,12 @@ void DeviceManager::updateAllDevices()
             device->data()
             );
     }
+}
+
+void DeviceManager::startPolling()
+{
+    if (m_modbusPollTimer && !m_modbusPollTimer->isActive())
+        m_modbusPollTimer->start(1000);
 }
 
 void DeviceManager::startAll(){

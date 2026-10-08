@@ -7,15 +7,22 @@
 #include <QPushButton>
 #include "adddevicedialog.h"
 #include <QMessageBox>
+#include <QtConcurrent/QtConcurrentRun>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QSqlError>
+#include <QThread>
+#include <algorithm>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , deviceManager(new DeviceManager(this))
     , databaseManager(new DatabaseManager(this))
     , timer(new QTimer(this))
     , m_mockServer(new MockModbusTCPServer(this))
 {
+    deviceManager= new DeviceManager(databaseManager, this);
+
     ui->setupUi(this);
     ui->deviceTable->setColumnCount(9);
     ui->deviceTable->setHorizontalHeaderLabels({
@@ -52,7 +59,6 @@ MainWindow::MainWindow(QWidget *parent)
             deviceManager,
             &DeviceManager::updateAllDevices);
 
-    timer->start(1000);
 
     connect(
         deviceManager,
@@ -65,9 +71,82 @@ MainWindow::MainWindow(QWidget *parent)
     databaseManager->openDatabase();
     databaseManager->createTables();
 
-    // 此处注意读取数据库加载流程优化
-    loadAlarmHistory();
-    loadCurrentAlarms();
+    // 设备添加 -> MainWindow 表格
+    connect(
+        deviceManager,
+        &DeviceManager::deviceAdded,
+        this,
+        &MainWindow::addDeviceRow
+        );
+
+    // 启动时的数据库查询放入后台线程；该线程使用独立 SQLite 连接。
+    m_startupWatcher = new QFutureWatcher<StartupData>(this);
+    connect(m_startupWatcher, &QFutureWatcher<StartupData>::finished,
+            this, [this]() {
+        applyStartupData(m_startupWatcher->result());
+    });
+
+    const QString databasePath = databaseManager->databasePath();
+    m_startupWatcher->setFuture(QtConcurrent::run([databasePath]() {
+        StartupData result;
+        const QString connectionName =
+            QStringLiteral("startup_read_%1").arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
+            db.setDatabaseName(databasePath);
+            if (!db.open()) {
+                qWarning() << "后台打开数据库失败:" << db.lastError();
+            } else {
+                {
+                QSqlQuery query(db);
+                if (query.exec("SELECT device_id, device_name, data_source, protocol_type, serial_port, baud_rate, data_bits, stop_bits, parity, rtu_slave_id, rtu_start_address, rtu_quantity, tcp_ip, tcp_port, tcp_unit_id, tcp_start_address, tcp_quantity FROM device ORDER BY device_id")) {
+                    while (query.next()) {
+                        DeviceConfig c;
+                        c.deviceId = query.value(0).toInt(); c.deviceName = query.value(1).toString();
+                        c.dataSource = static_cast<DataSource>(query.value(2).toInt());
+                        c.protocolType = static_cast<ProtocolType>(query.value(3).toInt());
+                        c.serialPort = query.value(4).toString(); c.baudRate = query.value(5).toInt();
+                        c.dataBits = query.value(6).toInt(); c.stopBits = query.value(7).toInt(); c.parity = query.value(8).toString();
+                        c.rtuSlaveId = query.value(9).toInt(); c.rtuStartAddress = query.value(10).toInt(); c.rtuQuantity = query.value(11).toInt();
+                        c.tcpIp = query.value(12).toString(); c.tcpPort = query.value(13).toInt(); c.tcpUnitId = query.value(14).toInt();
+                        c.tcpStartAddress = query.value(15).toInt(); c.tcpQuantity = query.value(16).toInt();
+                        result.devices.append(c);
+                    }
+                } else qWarning() << "后台查询设备失败:" << query.lastError();
+
+                auto readAlarms = [&db](const QString &sql, int limit) {
+                    QList<AlarmInfo> alarms;
+                    QSqlQuery aq(db);
+                    aq.prepare(sql);
+                    if (sql.contains(":limit")) aq.bindValue(":limit", limit);
+                    if (!aq.exec()) { qWarning() << "后台查询报警失败:" << aq.lastError(); return alarms; }
+                    while (aq.next()) {
+                        AlarmInfo a;
+                        a.deviceId = aq.value(0).toInt(); a.type = static_cast<AlarmType>(aq.value(1).toInt());
+                        a.message = aq.value(2).toString(); a.recovered = aq.value(3).toInt() != 0;
+                        a.timestamp = QDateTime::fromString(aq.value(4).toString(), "yyyy-MM-dd HH:mm:ss");
+                        alarms.append(a);
+                    }
+                    return alarms;
+                };
+                result.alarmHistory = readAlarms(
+                    "SELECT device_id, alarm_type, message, recovered, timestamp FROM alarm_history ORDER BY id DESC LIMIT :limit", 500);
+                std::reverse(result.alarmHistory.begin(), result.alarmHistory.end());
+                result.activeAlarms = readAlarms(R"(
+                    SELECT a.device_id, a.alarm_type, a.message, a.recovered, a.timestamp
+                    FROM alarm_history a
+                    WHERE a.recovered = 0 AND a.id = (
+                        SELECT MAX(b.id) FROM alarm_history b
+                        WHERE b.device_id = a.device_id AND b.alarm_type = a.alarm_type
+                    ) ORDER BY a.id ASC
+                )", 0);
+                }
+            }
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+        return result;
+    }));
 
     connect(deviceManager,
             &DeviceManager::deviceDataUpdated,
@@ -82,13 +161,6 @@ MainWindow::MainWindow(QWidget *parent)
         &DeviceManager::alarmTriggered,
         this,
         &MainWindow::handleAlarm
-        );
-
-    connect(
-        deviceManager,
-        &DeviceManager::deviceAdded,
-        this,
-        &MainWindow::addDeviceRow
         );
 
     // 服务器
@@ -324,6 +396,8 @@ void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
 
 MainWindow::~MainWindow()
 {
+    if (m_startupWatcher && m_startupWatcher->isRunning())
+        m_startupWatcher->waitForFinished();
     delete ui;
 }
 
@@ -342,7 +416,16 @@ void MainWindow::on_deviceTable_cellDoubleClicked(int row, int column)
 {
     Q_UNUSED(column);
 
-    int deviceId = row + 1;
+    if (row < 0 || row >= ui->deviceTable->rowCount())
+        return;
+
+    QTableWidgetItem *idItem =
+        ui->deviceTable->item(row, 0);
+
+    if (!idItem)
+        return;
+
+    int deviceId = idItem->text().toInt();
 
     Device *device = deviceManager->getDevice(deviceId);
 
@@ -507,8 +590,8 @@ int MainWindow::findCurrentAlarm(
 
 void MainWindow::loadAlarmHistory()
 {
-    QList<AlarmInfo> alarms =
-        databaseManager->queryAlarmHistory();
+    // Retained as an explicit reload entry point; startup uses the async loader.
+    QList<AlarmInfo> alarms = databaseManager->queryAlarmHistory(500);
 
     for (const AlarmInfo &alarm : alarms)
     {
@@ -652,23 +735,21 @@ void MainWindow::addDeviceRow(int deviceId)
     QString sourceName = "--";
     QString protocolName = "--";
 
+    // 数据来源：读取设备独立配置
     if (device)
     {
-        // 显示设备名称作为 ID 单元格的悬停提示
-        ui->deviceTable->item(row, 0)->setToolTip(device->name());
-
-        switch (device->protocolType())
+        switch (device->config().dataSource)
         {
-        case ProtocolType::Custom:
-            protocolName = "自定义串口";
+        case DataSource::Simulation:
+            sourceName = "模拟数据";
             break;
 
-        case ProtocolType::ModbusRTU:
-            protocolName = "Modbus RTU";
+        case DataSource::Serial:
+            sourceName = "串口";
             break;
 
-        case ProtocolType::ModbusTCP:
-            protocolName = "Modbus TCP";
+        case DataSource::TCP:
+            sourceName = "TCP";
             break;
         }
     }
@@ -795,18 +876,45 @@ void MainWindow::on_addDeviceBtn_clicked()
     DeviceConfig config =
         dialog.getDeviceConfig();
 
+    // 由数据库自动分配设备 ID
+    int deviceId =
+        databaseManager->insertDevice(config);
 
+    if (deviceId <= 0)
+    {
+        QMessageBox::critical(
+            this,
+            "添加设备失败",
+            "数据库无法分配设备 ID。"
+            );
+
+        return;
+    }
+
+    // 将数据库生成的 ID 写回配置
+    config.deviceId = deviceId;
+
+    // 使用数据库生成的 ID 创建 Device
     Device *device =
         new Device(
-            config.deviceId,
+            deviceId,
             deviceManager
             );
 
-
     device->setConfig(config);
 
+    if (!deviceManager->addDevice(device))
+    {
+        databaseManager->deleteDevice(deviceId);
 
-    deviceManager->addDevice(device);
+        QMessageBox::critical(
+            this,
+            "添加设备失败",
+            "设备初始化失败，已回滚数据库记录。"
+            );
+
+        return;
+    }
 }
 
 void MainWindow::on_tcpServerBtn_clicked()
@@ -860,4 +968,63 @@ void MainWindow::on_tcpServerBtn_clicked()
 
     }
 
+}
+
+void MainWindow::loadDevicesFromDatabase()
+{
+    const QList<DeviceConfig> configs =
+        databaseManager->queryDevices();
+
+    for (const DeviceConfig &config : configs)
+    {
+        Device *device =
+            new Device(
+                config.deviceId,
+                deviceManager
+                );
+
+        device->setConfig(config);
+
+        deviceManager->addDevice(device);
+    }
+
+    qDebug()
+        << "从数据库恢复设备数量:"
+        << configs.size();
+}
+
+void MainWindow::applyStartupData(const StartupData &data)
+{
+    for (const DeviceConfig &config : data.devices) {
+        Device *device = new Device(config.deviceId, deviceManager);
+        device->setConfig(config);
+        deviceManager->addDevice(device);
+    }
+
+    for (const AlarmInfo &alarm : data.alarmHistory) {
+        int row = ui->alarmTable->rowCount();
+        ui->alarmTable->insertRow(row);
+        ui->alarmTable->setItem(row, 0, new QTableWidgetItem(QString::number(alarm.deviceId)));
+        ui->alarmTable->setItem(row, 1, new QTableWidgetItem(alarm.recovered ? "恢复" : "报警"));
+        ui->alarmTable->setItem(row, 2, new QTableWidgetItem(alarm.message));
+        ui->alarmTable->setItem(row, 3, new QTableWidgetItem(alarm.timestamp.toString("HH:mm:ss")));
+    }
+
+    for (const AlarmInfo &alarm : data.activeAlarms) {
+        int row = ui->currentAlarmTable->rowCount();
+        ui->currentAlarmTable->insertRow(row);
+        ui->currentAlarmTable->setItem(row, 0, new QTableWidgetItem(QString::number(alarm.deviceId)));
+        auto *typeItem = new QTableWidgetItem(alarmTypeToString(alarm.type));
+        typeItem->setData(Qt::UserRole, static_cast<int>(alarm.type));
+        ui->currentAlarmTable->setItem(row, 1, typeItem);
+        ui->currentAlarmTable->setItem(row, 2, new QTableWidgetItem(alarm.message));
+        ui->currentAlarmTable->setItem(row, 3, new QTableWidgetItem(alarm.timestamp.toString("HH:mm:ss")));
+    }
+
+    qDebug() << "后台加载完成：设备" << data.devices.size()
+             << "条，历史报警" << data.alarmHistory.size()
+             << "条，当前报警" << data.activeAlarms.size() << "条";
+    deviceManager->startPolling();
+    if (timer && !timer->isActive())
+        timer->start(1000);
 }

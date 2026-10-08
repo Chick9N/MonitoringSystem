@@ -12,6 +12,13 @@
 #include <QMap>
 #include <QList>
 #include <QMainWindow>
+#include <QFutureWatcher>
+
+struct StartupData {
+    QList<DeviceConfig> devices;
+    QList<AlarmInfo> alarmHistory;
+    QList<AlarmInfo> activeAlarms;
+};
 
 
 namespace Ui {
@@ -43,6 +50,9 @@ private:
     static constexpr int MaxHistoryPoints = 30;
     MockModbusTCPServer *m_mockServer;
     bool m_tcpServerRunning=false;
+    QFutureWatcher<StartupData> *m_startupWatcher = nullptr;
+    void loadDevicesFromDatabase();
+    void applyStartupData(const StartupData &data);
 
 private slots:
     void removeDeviceRow(int deviceId);

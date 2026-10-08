@@ -42,29 +42,6 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="idLabel">
-          <property name="text">
-           <string>设备 ID</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QSpinBox" name="deviceIdSpinBox">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="wrapping">
-           <bool>false</bool>
-          </property>
-          <property name="minimum">
-           <number>1</number>
-          </property>
-          <property name="maximum">
-           <number>255</number>
-          </property>
-         </widget>
-        </item>
        </layout>
       </item>
       <item>
@@ -385,6 +362,9 @@
              </item>
              <item row="3" column="1">
               <widget class="QSpinBox" name="tcpUnitIdSpinBox">
+               <property name="minimum">
+                <number>1</number>
+               </property>
                <property name="maximum">
                 <number>255</number>
                </property>
