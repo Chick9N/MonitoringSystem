@@ -111,13 +111,7 @@ void MockModbusTCPServer::stop()
     {
         if(socket)
         {
-            socket->disconnectFromHost();
-
-            if(socket->state()
-                != QAbstractSocket::UnconnectedState)
-            {
-                socket->close();
-            }
+            socket->abort();
 
             socket->deleteLater();
         }

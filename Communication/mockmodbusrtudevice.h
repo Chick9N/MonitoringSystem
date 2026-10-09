@@ -21,6 +21,8 @@ public:
     void stop();
 
     bool isRunning() const;
+    QString portName() const;
+    qint32 baudRate() const;
 
 signals:
     void started();

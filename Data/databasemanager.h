@@ -40,6 +40,11 @@ public:
 
     bool createTables();
     static DatabaseSnapshot loadStartupSnapshot(const QString &databasePath);
+    static QList<DeviceHistory> loadDeviceHistorySnapshot(
+        const QString &databasePath,
+        int deviceId,
+        const QDateTime &startTime,
+        const QDateTime &endTime);
 
     // 设备配置管理
     // 返回当前最小可用设备 ID，失败返回 -1
@@ -48,17 +53,6 @@ public:
     // 删除设备配置
     bool deleteDevice(int deviceId) override;
 
-    // 查询某设备全部历史数据
-    QList<DeviceHistory> queryDeviceHistory(int deviceId);
-
-    // 查询某设备指定时间范围的数据
-    QList<DeviceHistory> queryDeviceHistory(
-        int deviceId,
-        const QDateTime &startTime,
-        const QDateTime &endTime);
-
-    void insertAlarm(const AlarmInfo &alarm);
-    void deleteAlarmHistory();
 private:
     friend class DatabaseWriteQueue;
     static bool insertDeviceData(

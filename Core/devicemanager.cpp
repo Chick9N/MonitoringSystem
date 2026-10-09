@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QRandomGenerator>
 #include <QDebug>
+#include <QTcpSocket>
 #include <algorithm>
 
 DeviceManager::DeviceManager(DeviceRepository *deviceRepository,
@@ -114,11 +115,15 @@ QObject *parent)
             qWarning() << "Modbus RTU 请求超时:"
                        << "从站地址:" << m_expectedDeviceId;
 
+            const int timedOutDeviceId = m_expectedApplicationDeviceId;
+
             // 结束当前请求
             m_modbusRequestPending = false;
 
             // 清理未完成的响应数据
             m_modbusBuffer.clear();
+            m_expectedApplicationDeviceId = -1;
+            markDeviceOffline(timedOutDeviceId, QStringLiteral("Modbus RTU响应超时"));
         }
         );
 
@@ -141,6 +146,9 @@ QObject *parent)
     // 连接请求信号，使用队列连接
     connect(this, &DeviceManager::connectTCPRequested,
             m_modbusTCP, &ModbusTCP::connectToDevice,
+            Qt::QueuedConnection);
+    connect(this, &DeviceManager::restartTCPRequested,
+            m_modbusTCP, &ModbusTCP::restartConnection,
             Qt::QueuedConnection);
 
     // 接收完整响应帧，返回主线程处理
@@ -182,6 +190,7 @@ QObject *parent)
         [this]()
         {
             m_tcpConnected = true;
+            emit tcpConnectionChanged(true, QStringLiteral("TCP设备已连接"));
 
             qDebug()
                 << "主线程：Modbus TCP已连接";
@@ -204,6 +213,7 @@ QObject *parent)
         this,
         [this]()
         {
+            emit tcpConnectionChanged(false, QStringLiteral("TCP设备已断开，正在重连"));
             qDebug()
             <<"Modbus TCP连接断开";
 
@@ -228,14 +238,15 @@ QObject *parent)
 
                 data.isOnline=false;
 
-                device->setData(data);
+                updateDeviceData(device->id(), data);
             }
 
         });
 
     connect(m_modbusTCP, &ModbusTCP::tcpError,
-            this, [](const QString &error) {
+            this, [this](const QString &error) {
                 qWarning() << "主线程：Modbus TCP错误:" << error;
+                emit tcpConnectionChanged(false, error);
             }, Qt::QueuedConnection);
 
     m_tcpTimeoutTimer->setSingleShot(true);
@@ -249,6 +260,8 @@ QObject *parent)
                            << m_tcpExpectedTransactionId;
 
                 m_tcpRequestPending = false;
+                markDeviceOffline(m_tcpExpectedApplicationDeviceId,
+                                  QStringLiteral("Modbus TCP响应超时"));
             });
 
     connect(
@@ -257,35 +270,6 @@ QObject *parent)
         this,
         &DeviceManager::onModbusTimeout
         );
-
-    // tcp连接测试
-    connect(
-        m_modbusTCP,
-        &ModbusTCP::tcpConnected,
-        this,
-        [this]()
-        {
-            emit tcpTestResult(
-                true,
-                "Modbus TCP连接成功"
-                );
-        }
-        );
-
-
-    connect(
-        m_modbusTCP,
-        &ModbusTCP::tcpError,
-        this,
-        [this](const QString &error)
-        {
-            emit tcpTestResult(
-                false,
-                error
-                );
-        }
-        );
-
 
     // 启动工作线程
     m_modbusThread->start();
@@ -324,6 +308,22 @@ bool DeviceManager::addDevice(Device *device)
 
     DeviceConfig config = device->config();
 
+    if (config.protocolType == ProtocolType::ModbusTCP &&
+        config.dataSource == DataSource::TCP) {
+        for (Device *existing : m_devices) {
+            if (!existing || existing->config().protocolType != ProtocolType::ModbusTCP ||
+                existing->config().dataSource != DataSource::TCP)
+                continue;
+            if (existing->config().tcpIp != config.tcpIp ||
+                existing->config().tcpPort != config.tcpPort) {
+                qWarning() << "当前 ModbusTCP 客户端只支持一个活动端点，拒绝添加不同地址设备:"
+                           << config.tcpIp << config.tcpPort;
+                device->deleteLater();
+                return false;
+            }
+        }
+    }
+
     // 串口设备才需要初始化串口
     if (config.dataSource == DataSource::Serial)
     {
@@ -339,6 +339,14 @@ bool DeviceManager::addDevice(Device *device)
     }
 
     m_devices.append(device);
+
+    if (config.protocolType == ProtocolType::ModbusTCP &&
+        config.dataSource == DataSource::TCP &&
+        (m_tcpEndpointIp != config.tcpIp || m_tcpEndpointPort != config.tcpPort)) {
+        m_tcpEndpointIp = config.tcpIp;
+        m_tcpEndpointPort = static_cast<quint16>(config.tcpPort);
+        connectModbusTCP(config.tcpIp, static_cast<quint16>(config.tcpPort));
+    }
 
     connect(
         device,
@@ -364,6 +372,14 @@ bool DeviceManager::addDevice(Device *device)
 
     emit deviceAdded(device->id());
 
+    // 先创建 UI 行，再发布连接状态。网络/串口设备刚加入时尚未收到
+    // 有效响应，不能沿用 Device 构造时的“在线”默认值。
+    if (config.dataSource == DataSource::TCP || config.dataSource == DataSource::Serial) {
+        DeviceData initialData = device->data();
+        initialData.isOnline = false;
+        device->setData(initialData);
+    }
+
     return true;
 }
 
@@ -383,6 +399,8 @@ void DeviceManager::removeDevice(int deviceId)
                    << deviceId;
         return;
     }
+
+    m_alarmManager->forgetDevice(deviceId);
 
     // 如果当前正在等待该应用设备的 RTU 响应，取消请求。
     if (m_modbusRequestPending &&
@@ -444,6 +462,11 @@ QList<Device*> DeviceManager::devices() const{
     return m_devices;
 }
 
+void DeviceManager::restoreActiveAlarms(const QList<AlarmInfo> &alarms)
+{
+    m_alarmManager->restoreActiveAlarms(alarms);
+}
+
 void DeviceManager::updateDeviceData(
     int deviceId,
     const DeviceData &data)
@@ -471,8 +494,20 @@ void DeviceManager::updateDeviceData(
     // 检查设备报警
     m_alarmManager->checkDeviceData(
         deviceId,
-        data
+        data,
+        device->config()
         );
+}
+
+void DeviceManager::markDeviceOffline(int deviceId, const QString &reason)
+{
+    Device *device = getDevice(deviceId);
+    if (!device || !device->data().isOnline)
+        return;
+    qWarning() << reason << "设备ID:" << deviceId;
+    DeviceData data = device->data();
+    data.isOnline = false;
+    updateDeviceData(deviceId, data);
 }
 
 void DeviceManager::updateAllDevices()
@@ -485,7 +520,8 @@ void DeviceManager::updateAllDevices()
 
         m_alarmManager->checkDeviceData(
             device->id(),
-            device->data()
+            device->data(),
+            device->config()
             );
     }
 }
@@ -1049,6 +1085,27 @@ bool DeviceManager::connectModbusTCP(
     return true;
 }
 
+void DeviceManager::reconnectTCPDevices()
+{
+    for (Device *device : m_devices) {
+        if (!device || device->config().dataSource != DataSource::TCP ||
+            device->config().protocolType != ProtocolType::ModbusTCP)
+            continue;
+
+        const DeviceConfig &config = device->config();
+        if (config.tcpIp.isEmpty() || config.tcpPort <= 0 || config.tcpPort > 65535)
+            continue;
+
+        m_tcpTimeoutTimer->stop();
+        m_tcpRequestPending = false;
+        m_tcpExpectedApplicationDeviceId = -1;
+        m_tcpConnected = false;
+        emit tcpConnectionChanged(false, QStringLiteral("TCP服务器已启动，正在重新连接"));
+        emit restartTCPRequested(config.tcpIp, static_cast<quint16>(config.tcpPort));
+        return;
+    }
+}
+
 bool DeviceManager::requestModbusTCPRead(
     quint8 unitId,
     quint16 startAddress,
@@ -1094,51 +1151,49 @@ void DeviceManager::testTCPConnection(
     quint16 port
     )
 {
-    qDebug()
-    << "测试Modbus TCP连接:"
-    << ip
-    << port;
+    auto *socket = new QTcpSocket(this);
+    auto *timeout = new QTimer(socket);
+    timeout->setSingleShot(true);
+    socket->setProperty("testFinished", false);
 
+    connect(socket, &QTcpSocket::connected, this, [this, socket, timeout]() {
+        if (socket->property("testFinished").toBool())
+            return;
+        socket->setProperty("testFinished", true);
+        timeout->stop();
+        emit tcpTestResult(true, QStringLiteral("Modbus TCP连接成功"));
+        socket->disconnectFromHost();
+        socket->deleteLater();
+    });
+    connect(socket, &QTcpSocket::errorOccurred, this,
+            [this, socket, timeout](QAbstractSocket::SocketError) {
+        if (socket->property("testFinished").toBool())
+            return;
+        socket->setProperty("testFinished", true);
+        timeout->stop();
+        emit tcpTestResult(false, socket->errorString());
+        socket->deleteLater();
+    });
+    connect(timeout, &QTimer::timeout, this, [this, socket]() {
+        if (socket->property("testFinished").toBool())
+            return;
+        socket->setProperty("testFinished", true);
+        emit tcpTestResult(false, QStringLiteral("连接超时"));
+        socket->abort();
+        socket->deleteLater();
+    });
 
-    if(!m_modbusTCP)
-    {
-        qWarning()
-        << "ModbusTCP对象为空";
-
-        return;
-    }
-
-
-    emit connectTCPRequested(
-        ip,
-        port
-        );
+    timeout->start(5000);
+    socket->connectToHost(ip, port);
 }
 
 void DeviceManager::onModbusTimeout(quint16 transactionId)
 {
-    if(transactionId != m_tcpExpectedTransactionId)
+    if(transactionId != m_tcpExpectedTransactionId || !m_tcpRequestPending)
         return;
 
 
-    qWarning()
-        <<"TCP设备响应超时:"
-        <<m_tcpExpectedApplicationDeviceId;
-
-
-    Device *device =
-        getDevice(m_tcpExpectedApplicationDeviceId);
-
-
-    if(device)
-    {
-        DeviceData data=device->data();
-
-        data.isOnline=false;
-
-        device->setData(data);
-    }
-
-
+    markDeviceOffline(m_tcpExpectedApplicationDeviceId,
+                      QStringLiteral("TCP设备响应超时"));
     m_tcpRequestPending=false;
 }

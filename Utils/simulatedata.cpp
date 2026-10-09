@@ -7,6 +7,12 @@
 quint16 SimulationData::temperature(
     quint16 current)
 {
+    // 每隔若干采样点制造短暂越界，便于验证高低温报警与恢复流程。
+    const int excursion = randomRange(0, 23);
+    if (excursion == 0)
+        return static_cast<quint16>(randomRange(520, 580));
+    if (excursion == 1)
+        return static_cast<quint16>(randomRange(90, 140));
 
     int delta =
         randomRange(-5,5);
@@ -33,6 +39,11 @@ quint16 SimulationData::temperature(
 quint16 SimulationData::voltage(
     quint16 current)
 {
+    const int excursion = randomRange(0, 19);
+    if (excursion == 0)
+        return static_cast<quint16>(randomRange(235, 245));
+    if (excursion == 1)
+        return static_cast<quint16>(randomRange(195, 205));
 
     int delta =
         randomRange(-1,1);

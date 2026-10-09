@@ -5,6 +5,7 @@
 #include "alarm.h"
 #include "devicedata.h"
 #include <QMap>
+#include "deviceconfig.h"
 
 class AlarmManager : public QObject
 {
@@ -20,7 +21,10 @@ public:
 
     QList<AlarmInfo> checkDeviceData(
         int deviceId,
-        const DeviceData &data);
+        const DeviceData &data,
+        const DeviceConfig &config = DeviceConfig());
+    void restoreActiveAlarms(const QList<AlarmInfo> &alarms);
+    void forgetDevice(int deviceId);
 
 signals:
     void alarmTriggered(const AlarmInfo &alarm);

@@ -42,8 +42,14 @@ private:
     QMap<int, QList<double>> m_voltageHistory;
     static constexpr int MaxHistoryPoints = 30;
     TcpServerService *m_tcpServerService;
+    class MockSerialConfigWindow *m_mockSerialConfigWindow = nullptr;
     QFutureWatcher<DatabaseSnapshot> *m_startupWatcher = nullptr;
+    QTimer *m_alarmBlinkTimer = nullptr;
+    bool m_alarmBlinkPhase = false;
     void applyStartupData(const DatabaseSnapshot &data);
+    void updateAlarmBlinking();
+    void setConnectionIndicator(class QLabel *indicator, bool active);
+    void filterDevices(const QString &query);
 
 private slots:
     void removeDeviceRow(int deviceId);
@@ -56,9 +62,10 @@ private slots:
     void on_mockSerialConfigBtn_clicked();
 
     void addDeviceRow(int deviceId);
-    void on_testBtn_clicked();
     void on_addDeviceBtn_clicked();
     void on_tcpServerBtn_clicked();
+    void on_openLogsBtn_clicked();
+    void on_acknowledgeAlarmBtn_clicked();
 };
 
 #endif // MAINWINDOW_H

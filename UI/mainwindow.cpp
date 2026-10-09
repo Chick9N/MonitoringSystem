@@ -1,13 +1,24 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "../UI/devicewidget.h"
-#include <qtablewidget.h>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QAbstractItemView>
 #include "minichartwidget.h"
 #include "mockserialconfigwindow.h"
 #include <QPushButton>
 #include "adddevicedialog.h"
 #include <QMessageBox>
 #include <QtConcurrent/QtConcurrentRun>
+#include <QLabel>
+#include <QColor>
+#include <QDesktopServices>
+#include <QFileInfo>
+#include <QUrl>
+#include <QBrush>
+#include <QIcon>
+#include <QLineEdit>
+#include "../Utils/applogger.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -20,7 +31,48 @@ MainWindow::MainWindow(QWidget *parent)
     deviceManager= new DeviceManager(databaseManager, this);
 
     ui->setupUi(this);
+    setWindowIcon(QIcon(QStringLiteral(":/assets/monitoring-app.svg")));
+    auto *serialIndicator = new QLabel(QStringLiteral("● 串口未连接"), this);
+    auto *tcpClientIndicator = new QLabel(QStringLiteral("● TCP客户端未连接"), this);
+    statusBar()->addPermanentWidget(serialIndicator);
+    statusBar()->addPermanentWidget(tcpClientIndicator);
+    setConnectionIndicator(serialIndicator, false);
+    setConnectionIndicator(tcpClientIndicator, false);
+
+    connect(deviceManager, &DeviceManager::serialPortOpened, this,
+            [this, serialIndicator]() {
+        serialIndicator->setText(QStringLiteral("● 串口已连接"));
+        setConnectionIndicator(serialIndicator, true);
+    });
+    connect(deviceManager, &DeviceManager::serialPortClosed, this,
+            [this, serialIndicator]() {
+        serialIndicator->setText(QStringLiteral("● 串口未连接"));
+        setConnectionIndicator(serialIndicator, false);
+    });
+    connect(deviceManager, &DeviceManager::serialPortError, this,
+            [this, serialIndicator](const QString &message) {
+        serialIndicator->setText(QStringLiteral("● 串口错误"));
+        serialIndicator->setToolTip(message);
+        setConnectionIndicator(serialIndicator, false);
+    });
+    connect(deviceManager, &DeviceManager::tcpConnectionChanged, this,
+            [this, tcpClientIndicator](bool connected, const QString &message) {
+        tcpClientIndicator->setText(connected ? QStringLiteral("● TCP客户端已连接")
+                                               : QStringLiteral("● TCP客户端未连接"));
+        tcpClientIndicator->setToolTip(message);
+        setConnectionIndicator(tcpClientIndicator, connected);
+    });
+
+    m_alarmBlinkTimer = new QTimer(this);
+    m_alarmBlinkTimer->setInterval(500);
+    connect(m_alarmBlinkTimer, &QTimer::timeout, this, &MainWindow::updateAlarmBlinking);
     ui->deviceTable->setColumnCount(9);
+    connect(ui->deviceSearchEdit, &QLineEdit::textChanged,
+            this, &MainWindow::filterDevices);
+    ui->currentAlarmTable->setColumnCount(5);
+    ui->currentAlarmTable->setHorizontalHeaderLabels({
+        QStringLiteral("设备ID"), QStringLiteral("类型"), QStringLiteral("报警信息"),
+        QStringLiteral("时间"), QStringLiteral("确认状态")});
     ui->deviceTable->setHorizontalHeaderLabels({
         "设备ID",
         "来源",
@@ -42,6 +94,19 @@ MainWindow::MainWindow(QWidget *parent)
     header->setSectionResizeMode(6, QHeaderView::Stretch);
     header->setSectionResizeMode(7, QHeaderView::Stretch);
     header->setSectionResizeMode(8, QHeaderView::ResizeToContents);
+
+    for (QTableWidget *table : {ui->alarmTable, ui->currentAlarmTable})
+    {
+        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setAlternatingRowColors(true);
+        table->verticalHeader()->hide();
+        table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+        table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    }
+    ui->currentAlarmTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
 
     // DeviceManager 数据更新 -> MainWindow
     connect(deviceManager,
@@ -80,13 +145,22 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tcpServerService, &TcpServerService::stateChanged,
             this, [this](bool running, const QString &message) {
         ui->tcpServerBtn->setText(running ? "关闭TCP服务器" : "启动TCP服务器");
-        ui->tcpStatusLabel->setText(message);
+        ui->tcpStatusLabel->setText(QStringLiteral("● ") + message);
+        ui->tcpStatusLabel->setStyleSheet(running
+            ? QStringLiteral("color:#15803D;font-weight:600")
+            : QStringLiteral("color:#64748B;font-weight:600"));
+        if (running)
+            deviceManager->reconnectTCPDevices();
     });
     connect(m_tcpServerService, &TcpServerService::errorOccurred,
             this, [this](const QString &message) {
-        ui->tcpStatusLabel->setText("TCP服务器启动失败");
+        ui->tcpStatusLabel->setText(QStringLiteral("● TCP服务器启动失败"));
+        ui->tcpStatusLabel->setStyleSheet(QStringLiteral("color:#DC2626;font-weight:600"));
         QMessageBox::warning(this, "TCP服务器", message);
     });
+
+    ui->alarmCountLabel->setStyleSheet(QStringLiteral("font-size:15px;font-weight:700;color:#334155"));
+    ui->currentAlarmCountLabel->setStyleSheet(QStringLiteral("font-size:15px;font-weight:700;color:#B91C1C"));
 
     // 启动时的数据库查询放入后台线程；该线程使用独立 SQLite 连接。
     m_startupWatcher = new QFutureWatcher<DatabaseSnapshot>(this);
@@ -116,6 +190,21 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::removeDeviceRow(int deviceId)
 {
+    if (m_deviceWidgets.contains(deviceId) && m_deviceWidgets.value(deviceId))
+        m_deviceWidgets.value(deviceId)->close();
+
+    for (int row = ui->alarmTable->rowCount() - 1; row >= 0; --row) {
+        const auto *idItem = ui->alarmTable->item(row, 0);
+        if (idItem && idItem->text().toInt() == deviceId)
+            ui->alarmTable->removeRow(row);
+    }
+    for (int row = ui->currentAlarmTable->rowCount() - 1; row >= 0; --row) {
+        const auto *idItem = ui->currentAlarmTable->item(row, 0);
+        if (idItem && idItem->text().toInt() == deviceId)
+            ui->currentAlarmTable->removeRow(row);
+    }
+    updateAlarmStatistics();
+    updateAlarmBlinking();
 
     if(!m_deviceRowMap.contains(deviceId))
         return;
@@ -246,10 +335,13 @@ void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
         );
 
     // 状态
-    ui->deviceTable->setItem(
-        row, 3,
-        new QTableWidgetItem(data.isOnline ? "在线" : "离线")
-        );
+    auto *stateItem = new QTableWidgetItem(data.isOnline ? QStringLiteral("● 在线")
+                                                          : QStringLiteral("● 离线"));
+    stateItem->setForeground(data.isOnline ? QColor(QStringLiteral("#16A34A"))
+                                            : QColor(QStringLiteral("#DC2626")));
+    stateItem->setToolTip(data.isOnline ? QStringLiteral("最近数据正常")
+                                        : QStringLiteral("设备无响应或已断开"));
+    ui->deviceTable->setItem(row, 3, stateItem);
 
     // 获取温度曲线控件
     MiniChartWidget *temperatureChart =
@@ -288,19 +380,25 @@ void MainWindow::updateDeviceUI(int deviceId, const DeviceData &data)
     if (data.isOnline)
     {
         // 温度
+        auto *temperatureItem = new QTableWidgetItem(
+            QString::number(data.temperature, 'f', 1));
+        auto *voltageItem = new QTableWidgetItem(
+            QString::number(data.voltage, 'f', 1));
+        if (device && (data.temperature < device->config().temperatureLow ||
+                       data.temperature > device->config().temperatureHigh))
+            temperatureItem->setForeground(QColor(QStringLiteral("#DC2626")));
+        if (device && (data.voltage < device->config().voltageLow ||
+                       data.voltage > device->config().voltageHigh))
+            voltageItem->setForeground(QColor(QStringLiteral("#DC2626")));
         ui->deviceTable->setItem(
             row, 4,
-            new QTableWidgetItem(
-                QString::number(data.temperature, 'f', 1)
-                )
+            temperatureItem
             );
 
         // 电压
         ui->deviceTable->setItem(
             row, 5,
-            new QTableWidgetItem(
-                QString::number(data.voltage, 'f', 1)
-                )
+            voltageItem
             );
 
         // 保存历史数据
@@ -403,7 +501,8 @@ void MainWindow::on_deviceTable_cellDoubleClicked(int row, int column)
 void MainWindow::handleAlarm(const AlarmInfo &alarm)
 {
     // 保存报警记录
-    databaseManager->insertAlarm(alarm);
+    if (databaseWriteQueue)
+        databaseWriteQueue->enqueueAlarm(alarm);
 
     // 1. 记录报警事件
     int row = ui->alarmTable->rowCount();
@@ -417,7 +516,6 @@ void MainWindow::handleAlarm(const AlarmInfo &alarm)
             QString::number(alarm.deviceId)
             )
         );
-
     ui->alarmTable->setItem(
         row,
         1,
@@ -425,6 +523,8 @@ void MainWindow::handleAlarm(const AlarmInfo &alarm)
             alarm.recovered ? "恢复" : "报警"
             )
         );
+    ui->alarmTable->item(row, 1)->setForeground(
+        alarm.recovered ? QColor(QStringLiteral("#15803D")) : QColor(QStringLiteral("#B91C1C")));
 
     ui->alarmTable->setItem(
         row,
@@ -439,6 +539,8 @@ void MainWindow::handleAlarm(const AlarmInfo &alarm)
             alarm.timestamp.toString("HH:mm:ss")
             )
         );
+    if (ui->alarmTable->rowCount() > 500)
+        ui->alarmTable->removeRow(0);
 
     // 2. 更新当前报警状态
 
@@ -489,6 +591,10 @@ void MainWindow::handleAlarm(const AlarmInfo &alarm)
                     alarm.timestamp.toString("HH:mm:ss")
                     )
                 );
+            ui->currentAlarmTable->setItem(
+                currentRow, 4,
+                new QTableWidgetItem(alarm.acknowledged ? QStringLiteral("已确认")
+                                                         : QStringLiteral("未确认")));
         }
     }
     else
@@ -506,6 +612,64 @@ void MainWindow::handleAlarm(const AlarmInfo &alarm)
 
     // 更新统计数字
     updateAlarmStatistics();
+    updateAlarmBlinking();
+}
+
+void MainWindow::updateAlarmBlinking()
+{
+    bool hasUnacknowledged = false;
+    for (int row = 0; row < ui->currentAlarmTable->rowCount(); ++row) {
+        const auto *ackItem = ui->currentAlarmTable->item(row, 4);
+        if (!ackItem || ackItem->text() != QStringLiteral("已确认")) {
+            hasUnacknowledged = true;
+            break;
+        }
+    }
+    if (!hasUnacknowledged) {
+        m_alarmBlinkTimer->stop();
+        m_alarmBlinkPhase = false;
+        for (int row = 0; row < ui->currentAlarmTable->rowCount(); ++row)
+            for (int column = 0; column < ui->currentAlarmTable->columnCount(); ++column)
+                if (auto *item = ui->currentAlarmTable->item(row, column))
+                    item->setBackground(QBrush());
+        return;
+    }
+    if (!m_alarmBlinkTimer->isActive())
+        m_alarmBlinkTimer->start();
+    m_alarmBlinkPhase = !m_alarmBlinkPhase;
+    const QColor alertColor = m_alarmBlinkPhase ? QColor(QStringLiteral("#FEE2E2")) : QColor(QStringLiteral("#FFF7F7"));
+    for (int row = 0; row < ui->currentAlarmTable->rowCount(); ++row) {
+        const auto *ackItem = ui->currentAlarmTable->item(row, 4);
+        const bool unacknowledged = !ackItem || ackItem->text() != QStringLiteral("已确认");
+        for (int column = 0; column < ui->currentAlarmTable->columnCount(); ++column) {
+            if (auto *item = ui->currentAlarmTable->item(row, column))
+                item->setBackground(unacknowledged ? alertColor : QBrush());
+        }
+    }
+}
+
+void MainWindow::setConnectionIndicator(QLabel *indicator, bool active)
+{
+    if (!indicator)
+        return;
+    indicator->setStyleSheet(active
+        ? QStringLiteral("color:#16A34A;font-weight:600;padding:0 6px")
+        : QStringLiteral("color:#DC2626;font-weight:600;padding:0 6px"));
+}
+
+void MainWindow::filterDevices(const QString &query)
+{
+    const QString normalized = query.trimmed();
+    for (int row = 0; row < ui->deviceTable->rowCount(); ++row) {
+        bool matches = normalized.isEmpty();
+        for (int column = 0; !matches && column < ui->deviceTable->columnCount(); ++column) {
+            const QTableWidgetItem *item = ui->deviceTable->item(row, column);
+            if (item && (item->text().contains(normalized, Qt::CaseInsensitive) ||
+                         item->toolTip().contains(normalized, Qt::CaseInsensitive)))
+                matches = true;
+        }
+        ui->deviceTable->setRowHidden(row, !matches);
+    }
 }
 
 int MainWindow::findCurrentAlarm(
@@ -516,16 +680,15 @@ int MainWindow::findCurrentAlarm(
          row < ui->currentAlarmTable->rowCount();
          ++row)
     {
-        int id = ui->currentAlarmTable
-                     ->item(row, 0)
-                     ->text()
-                     .toInt();
+        const auto *idItem = ui->currentAlarmTable->item(row, 0);
+        const auto *typeItem = ui->currentAlarmTable->item(row, 1);
+        if (!idItem || !typeItem)
+            continue;
+        const int id = idItem->text().toInt();
 
         AlarmType currentType =
             static_cast<AlarmType>(
-                ui->currentAlarmTable
-                    ->item(row, 1)
-                    ->data(Qt::UserRole)
+                typeItem->data(Qt::UserRole)
                     .toInt()
                 );
 
@@ -539,7 +702,7 @@ int MainWindow::findCurrentAlarm(
 void MainWindow::updateAlarmStatistics()
 {
     ui->alarmCountLabel->setText(
-        QString("报警事件：%1")
+        QString("最近报警：%1")
             .arg(ui->alarmTable->rowCount())
         );
 
@@ -552,10 +715,12 @@ void MainWindow::updateAlarmStatistics()
 
 void MainWindow::on_mockSerialConfigBtn_clicked()
 {
-    MockSerialConfigWindow *window =
-        new MockSerialConfigWindow(this);
+    if (!m_mockSerialConfigWindow)
+        m_mockSerialConfigWindow = new MockSerialConfigWindow(this);
 
-    window->show();
+    m_mockSerialConfigWindow->show();
+    m_mockSerialConfigWindow->raise();
+    m_mockSerialConfigWindow->activateWindow();
 }
 
 void MainWindow::addDeviceRow(int deviceId)
@@ -580,6 +745,9 @@ void MainWindow::addDeviceRow(int deviceId)
         );
 
     Device *device = deviceManager->getDevice(deviceId);
+
+    if (device && ui->deviceTable->item(row, 0))
+        ui->deviceTable->item(row, 0)->setToolTip(device->config().deviceName);
 
     QString sourceName = "--";
     QString protocolName = "--";
@@ -674,12 +842,9 @@ void MainWindow::addDeviceRow(int deviceId)
     m_temperatureHistory[deviceId] = {};
     m_voltageHistory[deviceId] = {};
 
+    filterDevices(ui->deviceSearchEdit->text());
+
     qDebug() << "MainWindow 新增设备行:" << deviceId;
-}
-
-void MainWindow::on_testBtn_clicked()
-{
-
 }
 
 void MainWindow::on_addDeviceBtn_clicked()
@@ -759,6 +924,32 @@ void MainWindow::on_tcpServerBtn_clicked()
         m_tcpServerService->start(1502);
 }
 
+void MainWindow::on_openLogsBtn_clicked()
+{
+    const QString logDirectory = QFileInfo(AppLogger::logFilePath()).absolutePath();
+    QDesktopServices::openUrl(QUrl::fromLocalFile(logDirectory));
+}
+
+void MainWindow::on_acknowledgeAlarmBtn_clicked()
+{
+    const int row = ui->currentAlarmTable->currentRow();
+    if (row < 0)
+        return;
+    auto *deviceItem = ui->currentAlarmTable->item(row, 0);
+    auto *typeItem = ui->currentAlarmTable->item(row, 1);
+    if (!deviceItem || !typeItem)
+        return;
+    const int deviceId = deviceItem->text().toInt();
+    const auto type = static_cast<AlarmType>(typeItem->data(Qt::UserRole).toInt());
+    if (auto *ackItem = ui->currentAlarmTable->item(row, 4)) {
+        ackItem->setText(QStringLiteral("已确认"));
+        ackItem->setForeground(QColor(QStringLiteral("#15803D")));
+    }
+    if (databaseWriteQueue)
+        databaseWriteQueue->enqueueAlarmAcknowledgement(deviceId, type);
+    updateAlarmBlinking();
+}
+
 void MainWindow::applyStartupData(const DatabaseSnapshot &data)
 {
     for (const DeviceConfig &config : data.devices) {
@@ -774,6 +965,9 @@ void MainWindow::applyStartupData(const DatabaseSnapshot &data)
         ui->alarmTable->setItem(row, 1, new QTableWidgetItem(alarm.recovered ? "恢复" : "报警"));
         ui->alarmTable->setItem(row, 2, new QTableWidgetItem(alarm.message));
         ui->alarmTable->setItem(row, 3, new QTableWidgetItem(alarm.timestamp.toString("HH:mm:ss")));
+        if (auto *typeItem = ui->alarmTable->item(row, 1))
+            typeItem->setForeground(alarm.recovered ? QColor(QStringLiteral("#15803D"))
+                                                     : QColor(QStringLiteral("#B91C1C")));
     }
 
     for (const AlarmInfo &alarm : data.activeAlarms) {
@@ -785,7 +979,17 @@ void MainWindow::applyStartupData(const DatabaseSnapshot &data)
         ui->currentAlarmTable->setItem(row, 1, typeItem);
         ui->currentAlarmTable->setItem(row, 2, new QTableWidgetItem(alarm.message));
         ui->currentAlarmTable->setItem(row, 3, new QTableWidgetItem(alarm.timestamp.toString("HH:mm:ss")));
+        auto *ackItem = new QTableWidgetItem(alarm.acknowledged ? QStringLiteral("已确认")
+                                                                : QStringLiteral("未确认"));
+        if (alarm.acknowledged)
+            ackItem->setForeground(QColor(QStringLiteral("#15803D")));
+        ui->currentAlarmTable->setItem(row, 4, ackItem);
     }
+
+    if (!data.activeAlarms.isEmpty())
+        m_alarmBlinkTimer->start();
+    deviceManager->restoreActiveAlarms(data.activeAlarms);
+    updateAlarmBlinking();
 
     qDebug() << "后台加载完成：设备" << data.devices.size()
              << "条，历史报警" << data.alarmHistory.size()

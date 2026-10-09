@@ -45,35 +45,36 @@ void AlarmManager::checkAlarm(
 
 QList<AlarmInfo> AlarmManager::checkDeviceData(
     int deviceId,
-    const DeviceData &data)
+    const DeviceData &data,
+    const DeviceConfig &config)
 {
     QList<AlarmInfo> alarms;
 
     checkAlarm(
         deviceId,
         AlarmType::TemperatureHigh,
-        data.temperature > 50,
+        data.temperature > config.temperatureHigh,
         "温度过高"
         );
 
     checkAlarm(
         deviceId,
         AlarmType::TemperatureLow,
-        data.temperature < 15,
+        data.temperature < config.temperatureLow,
         "温度过低"
         );
 
     checkAlarm(
         deviceId,
         AlarmType::VoltageHigh,
-        data.voltage > 230,
+        data.voltage > config.voltageHigh,
         "电压过高"
         );
 
     checkAlarm(
         deviceId,
         AlarmType::VoltageLow,
-        data.voltage < 210,
+        data.voltage < config.voltageLow,
         "电压过低"
         );
 
@@ -85,6 +86,18 @@ QList<AlarmInfo> AlarmManager::checkDeviceData(
         );
 
     return alarms;
+}
+
+void AlarmManager::restoreActiveAlarms(const QList<AlarmInfo> &alarms)
+{
+    m_activeAlarms.clear();
+    for (const AlarmInfo &alarm : alarms)
+        setAlarmActive(alarm.deviceId, alarm.type);
+}
+
+void AlarmManager::forgetDevice(int deviceId)
+{
+    m_activeAlarms.remove(deviceId);
 }
 
 bool AlarmManager::isAlarmActive(

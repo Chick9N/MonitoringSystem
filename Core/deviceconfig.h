@@ -41,6 +41,12 @@ struct DeviceConfig
     int tcpUnitId = 1;
     int tcpStartAddress = 0;
     int tcpQuantity = 3;
+
+    // 报警阈值（温度使用 ℃，电压使用 V）
+    double temperatureLow = 15.0;
+    double temperatureHigh = 50.0;
+    double voltageLow = 210.0;
+    double voltageHigh = 230.0;
 };
 
 #endif // DEVICECONFIG_H

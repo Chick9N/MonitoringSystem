@@ -3,6 +3,8 @@
 
 #include <QWidget>
 
+class QShowEvent;
+
 class MockSerialDevice;
 class MockModbusRTUDevice;
 
@@ -34,6 +36,9 @@ private:
     MockSerialDevice *m_mockDevice;
     MockModbusRTUDevice *m_modbusDevice;
     bool m_modbusMode = false;
+
+protected:
+    void showEvent(QShowEvent *event) override;
 };
 
 #endif // MOCKSERIALCONFIGWINDOW_H

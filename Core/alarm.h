@@ -20,6 +20,7 @@ struct AlarmInfo
     QString message;
     QDateTime timestamp;
     bool recovered = false;
+    bool acknowledged = false;
 };
 
 inline QString alarmTypeToString(AlarmType type)

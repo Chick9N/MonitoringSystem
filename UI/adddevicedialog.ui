@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>500</width>
-    <height>400</height>
+    <width>620</width>
+    <height>740</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>500</width>
-    <height>400</height>
+    <width>580</width>
+    <height>680</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -42,6 +42,14 @@
           </property>
          </widget>
         </item>
+        <item row="1" column="0"><widget class="QLabel" name="temperatureLowLabel"><property name="text"><string>温度下限（℃）</string></property></widget></item>
+        <item row="1" column="1"><widget class="QDoubleSpinBox" name="temperatureLowSpinBox"><property name="maximum"><double>200.000000000000000</double></property><property name="value"><double>15.000000000000000</double></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="temperatureHighLabel"><property name="text"><string>温度上限（℃）</string></property></widget></item>
+        <item row="2" column="1"><widget class="QDoubleSpinBox" name="temperatureHighSpinBox"><property name="maximum"><double>200.000000000000000</double></property><property name="value"><double>50.000000000000000</double></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="voltageLowLabel"><property name="text"><string>电压下限（V）</string></property></widget></item>
+        <item row="3" column="1"><widget class="QDoubleSpinBox" name="voltageLowSpinBox"><property name="maximum"><double>1000.000000000000000</double></property><property name="value"><double>210.000000000000000</double></property></widget></item>
+        <item row="4" column="0"><widget class="QLabel" name="voltageHighLabel"><property name="text"><string>电压上限（V）</string></property></widget></item>
+        <item row="4" column="1"><widget class="QDoubleSpinBox" name="voltageHighSpinBox"><property name="maximum"><double>1000.000000000000000</double></property><property name="value"><double>230.000000000000000</double></property></widget></item>
        </layout>
       </item>
       <item>

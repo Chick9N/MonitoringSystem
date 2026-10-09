@@ -8,6 +8,7 @@
 #include <QtCharts/QDateTimeAxis>
 
 #include <QDateTime>
+#include <QtConcurrent/QtConcurrentRun>
 DeviceWidget::DeviceWidget(Device *device, DatabaseManager *databaseManager, QWidget *parent)
     : QWidget(parent)
     , m_databaseManager(databaseManager) // 直接复用数据库链接
@@ -28,8 +29,14 @@ DeviceWidget::DeviceWidget(Device *device, DatabaseManager *databaseManager, QWi
     setupCharts();
     setupHistoryCharts();
 
-    // 从 SQLite 加载历史数据
-    // loadHistory();
+    m_historyWatcher = new QFutureWatcher<QList<DeviceHistory>>(this);
+    connect(m_historyWatcher, &QFutureWatcher<QList<DeviceHistory>>::finished,
+            this, [this]() {
+        const QList<DeviceHistory> history = m_historyWatcher->result();
+        updateHistoryCharts(sampleHistory(history, 300));
+        ui->queryHistoryButton->setEnabled(true);
+        ui->queryHistoryButton->setText(QStringLiteral("查询"));
+    });
 
     updateWidget(m_device->data());
 }
@@ -40,9 +47,10 @@ DeviceWidget::~DeviceWidget()
 }
 
 void DeviceWidget::updateWidget(const DeviceData &data){
-    ui->startBtn->setEnabled(!data.isOnline);
-    ui->stopBtn->setEnabled(data.isOnline);
-    ui->statusLabel->setText(data.isOnline ? "状态：在线":"状态：离线");
+    ui->statusLabel->setText(data.isOnline ? "● 状态：在线":"● 状态：离线");
+    ui->statusLabel->setStyleSheet(data.isOnline
+        ? QStringLiteral("color:#16A34A;font-weight:700")
+        : QStringLiteral("color:#DC2626;font-weight:700"));
     if(data.isOnline){
         ui->deviceNameLabel->setText(
             QString("设备编号：%1").arg(m_device->id())
@@ -62,17 +70,6 @@ void DeviceWidget::updateWidget(const DeviceData &data){
         ui->temperatureLabel->setText("温度：--");
         ui->voltageLabel->setText("电压：--");
     }
-}
-
-void DeviceWidget::on_startBtn_clicked()
-{
-    m_device->start();
-}
-
-
-void DeviceWidget::on_stopBtn_clicked()
-{
-    m_device->stop();
 }
 
 void DeviceWidget::setupCharts()
@@ -245,74 +242,14 @@ void DeviceWidget::updateCharts(const DeviceData &data)
             );
     }
 
-    m_temperatureAxisY->setRange(15, 65);
-    m_voltageAxisY->setRange(210, 230);
+    m_temperatureAxisY->setRange(0, 65);
+    m_voltageAxisY->setRange(190, 250);
 }
-
-void DeviceWidget::loadHistory()
-{
-    QList<DeviceHistory> history =
-        m_databaseManager->queryDeviceHistory(
-            m_device->id()
-            );
-
-    qDebug() << "设备" << m_device->id()
-             << "历史数据数量：" << history.size();
-
-    if (history.isEmpty())
-        return;
-
-    m_temperatureSeries->clear();
-    m_voltageSeries->clear();
-
-    for (const DeviceHistory &item : history)
-    {
-        qint64 timestamp =
-            item.timestamp.toMSecsSinceEpoch();
-
-        m_temperatureSeries->append(
-            timestamp,
-            item.data.temperature
-            );
-
-        m_voltageSeries->append(
-            timestamp,
-            item.data.voltage
-            );
-    }
-
-    // X轴时间范围
-    qint64 startTime =
-        history.first().timestamp.toMSecsSinceEpoch();
-
-    qint64 endTime =
-        history.last().timestamp.toMSecsSinceEpoch();
-
-    // 如果只有一个时间点，避免坐标轴范围为0
-    if (startTime == endTime)
-    {
-        startTime -= 1000;
-        endTime += 1000;
-    }
-
-    m_temperatureAxisX->setRange(
-        QDateTime::fromMSecsSinceEpoch(startTime),
-        QDateTime::fromMSecsSinceEpoch(endTime)
-        );
-
-    m_voltageAxisX->setRange(
-        QDateTime::fromMSecsSinceEpoch(startTime),
-        QDateTime::fromMSecsSinceEpoch(endTime)
-        );
-
-    // Y轴范围
-    m_temperatureAxisY->setRange(15, 65);
-    m_voltageAxisY->setRange(210, 230);
-}
-
 
 void DeviceWidget::on_queryHistoryButton_clicked()
 {
+    if (m_historyWatcher->isRunning())
+        return;
     QDateTime endTime = QDateTime::currentDateTime();
     QDateTime startTime;
 
@@ -338,18 +275,15 @@ void DeviceWidget::on_queryHistoryButton_clicked()
         return;
     }
 
-    QList<DeviceHistory> history =
-        m_databaseManager->queryDeviceHistory(
-            m_device->id(),
-            startTime,
-            endTime
-            );
-
-    qDebug() << "查询到历史数据：" << history.size();
-
-    QList<DeviceHistory> sampledHistory =
-        sampleHistory(history, 300);
-    updateHistoryCharts(sampledHistory);
+    const QString databasePath = m_databaseManager->databasePath();
+    const int deviceId = m_device->id();
+    ui->queryHistoryButton->setEnabled(false);
+    ui->queryHistoryButton->setText(QStringLiteral("查询中…"));
+    m_historyWatcher->setFuture(QtConcurrent::run(
+        [databasePath, deviceId, startTime, endTime]() {
+            return DatabaseManager::loadDeviceHistorySnapshot(
+                databasePath, deviceId, startTime, endTime);
+        }));
 }
 
 QList<DeviceHistory> DeviceWidget::sampleHistory(
@@ -429,7 +363,7 @@ void DeviceWidget::setupHistoryCharts()
     m_historyTemperatureAxisY->setTickCount(5);
 
     m_historyTemperatureAxisY->setRange(
-        15,
+        0,
         65
         );
 
@@ -509,8 +443,8 @@ void DeviceWidget::setupHistoryCharts()
     m_historyVoltageAxisY->setTickCount(5);
 
     m_historyVoltageAxisY->setRange(
-        210,
-        230
+        190,
+        250
         );
 
     voltageChart->addAxis(

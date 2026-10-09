@@ -110,6 +110,16 @@ bool MockModbusRTUDevice::isRunning() const
     return m_serialPort->isOpen();
 }
 
+QString MockModbusRTUDevice::portName() const
+{
+    return m_serialPort->portName();
+}
+
+qint32 MockModbusRTUDevice::baudRate() const
+{
+    return m_serialPort->baudRate();
+}
+
 void MockModbusRTUDevice::readData()
 {
     QByteArray data =

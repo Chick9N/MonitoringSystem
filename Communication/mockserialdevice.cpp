@@ -134,6 +134,16 @@ bool MockSerialDevice::isRunning() const
     return m_serialPort->isOpen();
 }
 
+QString MockSerialDevice::portName() const
+{
+    return m_serialPort->portName();
+}
+
+qint32 MockSerialDevice::baudRate() const
+{
+    return m_serialPort->baudRate();
+}
+
 void MockSerialDevice::readData()
 {
     QByteArray data = m_serialPort->readAll();

@@ -46,9 +46,11 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Core/deviceconfig.h
         Utils/ipv4input.h Utils/ipv4input.cpp
         Utils/simulatedata.h Utils/simulatedata.cpp
+        Utils/applogger.h Utils/applogger.cpp
         Communication/mockserialdevice.h Communication/mockserialdevice.cpp
         UI/mockserialconfigwindow.h UI/mockserialconfigwindow.cpp UI/mockserialconfigwindow.ui
         Communication/mockmodbusrtudevice.h Communication/mockmodbusrtudevice.cpp
+        resources/app.qrc
 
 
 

@@ -79,6 +79,12 @@ void AddDeviceDialog::accept()
         }
     }
 
+    if (ui->temperatureLowSpinBox->value() >= ui->temperatureHighSpinBox->value() ||
+        ui->voltageLowSpinBox->value() >= ui->voltageHighSpinBox->value()) {
+        QMessageBox::warning(this, "输入错误", "报警上限必须大于对应的下限。");
+        return;
+    }
+
     // 校验通过，关闭表单并返回 Accepted
     QDialog::accept();
 }
@@ -100,6 +106,10 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
         static_cast<ProtocolType>(
             ui->protocolComboBox->currentIndex()
             );
+    config.temperatureLow = ui->temperatureLowSpinBox->value();
+    config.temperatureHigh = ui->temperatureHighSpinBox->value();
+    config.voltageLow = ui->voltageLowSpinBox->value();
+    config.voltageHigh = ui->voltageHighSpinBox->value();
 
 
     // ==============================
@@ -248,12 +258,15 @@ void AddDeviceDialog::onTCPTestResult(
     const QString &message
     )
 {
+    ui->testConnectionBtn->setEnabled(true);
     if(success)
     {
-        ui->connectionStatusLabel->setText("连接成功");
+        ui->connectionStatusLabel->setText("● 连接成功");
+        ui->connectionStatusLabel->setStyleSheet(QStringLiteral("color:#16A34A;font-weight:600"));
     }
     else
     {
-        ui->connectionStatusLabel->setText("连接失败"+message);
+        ui->connectionStatusLabel->setText("● 连接失败："+message);
+        ui->connectionStatusLabel->setStyleSheet(QStringLiteral("color:#DC2626;font-weight:600"));
     }
 }

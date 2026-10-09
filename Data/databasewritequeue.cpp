@@ -74,3 +74,47 @@ void DatabaseWriteQueue::enqueueDeviceData(int deviceId,
             }
         }, Qt::QueuedConnection);
 }
+
+void DatabaseWriteQueue::enqueueAlarm(const AlarmInfo &alarm)
+{
+    const auto state = m_state;
+    QMetaObject::invokeMethod(m_workerContext, [state, alarm]() {
+        if (!state->database.isOpen())
+            return;
+        QSqlQuery query(state->database);
+        query.prepare(R"(
+            INSERT INTO alarm_history
+                (device_id, alarm_type, message, recovered, timestamp, acknowledged)
+            VALUES (:device_id, :alarm_type, :message, :recovered, :timestamp, :acknowledged)
+        )");
+        query.bindValue(":device_id", alarm.deviceId);
+        query.bindValue(":alarm_type", static_cast<int>(alarm.type));
+        query.bindValue(":message", alarm.message);
+        query.bindValue(":recovered", alarm.recovered ? 1 : 0);
+        query.bindValue(":timestamp", alarm.timestamp.toString("yyyy-MM-dd HH:mm:ss"));
+        query.bindValue(":acknowledged", alarm.acknowledged ? 1 : 0);
+        if (!query.exec())
+            qWarning() << "异步写入报警记录失败:" << query.lastError();
+    }, Qt::QueuedConnection);
+}
+
+void DatabaseWriteQueue::enqueueAlarmAcknowledgement(int deviceId, AlarmType type)
+{
+    const auto state = m_state;
+    QMetaObject::invokeMethod(m_workerContext, [state, deviceId, type]() {
+        if (!state->database.isOpen())
+            return;
+        QSqlQuery query(state->database);
+        query.prepare(R"(
+            UPDATE alarm_history SET acknowledged = 1
+            WHERE id = (
+                SELECT MAX(id) FROM alarm_history
+                WHERE device_id = :device_id AND alarm_type = :alarm_type AND recovered = 0
+            )
+        )");
+        query.bindValue(":device_id", deviceId);
+        query.bindValue(":alarm_type", static_cast<int>(type));
+        if (!query.exec())
+            qWarning() << "报警确认状态写入失败:" << query.lastError();
+    }, Qt::QueuedConnection);
+}

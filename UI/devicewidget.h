@@ -4,6 +4,7 @@
 #include <QWidget>
 #include "../Data/databasemanager.h"
 #include "../Core/device.h"
+#include <QFutureWatcher>
 namespace Ui {
 class DeviceWidget;
 }
@@ -24,15 +25,10 @@ public:
 private slots:
     void updateWidget(const DeviceData &data);
 
-    void on_startBtn_clicked();
-    void on_stopBtn_clicked();
-
-
     void on_queryHistoryButton_clicked();
 
 private:
     void setupCharts();
-    void loadHistory();
     void updateCharts(const DeviceData &data);
     void setupHistoryCharts();
     void updateHistoryCharts(const QList<DeviceHistory> &history);
@@ -65,6 +61,7 @@ private:
 
     QValueAxis *m_historyTemperatureAxisY;
     QValueAxis *m_historyVoltageAxisY;
+    QFutureWatcher<QList<DeviceHistory>> *m_historyWatcher = nullptr;
 };
 
 #endif // DEVICEWIDGET_H

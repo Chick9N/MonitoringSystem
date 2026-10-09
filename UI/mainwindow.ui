@@ -6,237 +6,361 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1104</width>
-    <height>631</height>
+    <width>1297</width>
+    <height>640</height>
    </rect>
   </property>
-  <property name="sizePolicy">
-   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
-   </sizepolicy>
+  <property name="minimumSize">
+   <size>
+    <width>1100</width>
+    <height>640</height>
+   </size>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>设备监控系统</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <item alignment="Qt::AlignmentFlag::AlignHCenter|Qt::AlignmentFlag::AlignVCenter">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <property name="spacing">
+     <number>10</number>
+    </property>
+    <property name="leftMargin">
+     <number>12</number>
+    </property>
+    <property name="topMargin">
+     <number>10</number>
+    </property>
+    <property name="rightMargin">
+     <number>12</number>
+    </property>
+    <property name="bottomMargin">
+     <number>10</number>
+    </property>
+    <item>
      <widget class="QLabel" name="windowTitle">
+      <property name="font">
+       <font>
+        <pointsize>17</pointsize>
+        <bold>true</bold>
+       </font>
+      </property>
       <property name="text">
        <string>设备监控系统</string>
       </property>
      </widget>
     </item>
     <item>
-     <widget class="QWidget" name="widget" native="true">
-      <layout class="QHBoxLayout" name="horizontalLayout_3">
-       <item>
-        <widget class="QPushButton" name="startAllBtn">
-         <property name="text">
-          <string>启动全部</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="stopAllBtn">
-         <property name="text">
-          <string>停止全部</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
+     <layout class="QHBoxLayout" name="actionLayout">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item>
+       <widget class="QPushButton" name="startAllBtn">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>启动模拟设备</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="stopAllBtn">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>停止模拟设备</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="addDeviceBtn">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>添加设备</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="mockSerialConfigBtn">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>模拟串口设备</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="tcpServerBtn">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>32</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>启动TCP模拟服务</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="tcpStatusLabel">
+        <property name="minimumSize">
+         <size>
+          <width>150</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>TCP模拟服务已停止</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="openLogsBtn">
+        <property name="text"><string>查看日志目录</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="deviceSearchEdit">
+        <property name="minimumSize"><size><width>190</width><height>32</height></size></property>
+        <property name="placeholderText"><string>搜索设备名称、ID或状态</string></property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="actionSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>24</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
     </item>
     <item>
-     <widget class="QWidget" name="widget_3" native="true">
-      <layout class="QHBoxLayout" name="horizontalLayout">
-       <item>
-        <widget class="QTableWidget" name="deviceTable">
-         <property name="minimumSize">
-          <size>
-           <width>560</width>
-           <height>260</height>
-          </size>
+     <layout class="QHBoxLayout" name="contentLayout">
+      <property name="spacing">
+       <number>12</number>
+      </property>
+      <item>
+       <widget class="QTableWidget" name="deviceTable">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>3</horstretch>
+          <verstretch>1</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>580</width>
+          <height>420</height>
+         </size>
+        </property>
+        <column>
+         <property name="text">
+          <string>设备ID</string>
          </property>
-         <property name="contextMenuPolicy">
-          <enum>Qt::ContextMenuPolicy::DefaultContextMenu</enum>
+        </column>
+        <column>
+         <property name="text">
+          <string>来源</string>
          </property>
-         <column>
-          <property name="text">
-           <string>设备ID</string>
-          </property>
-         </column>
-         <column>
-          <property name="text">
-           <string>状态</string>
-          </property>
-         </column>
-         <column>
-          <property name="text">
-           <string>温度</string>
-          </property>
-         </column>
-         <column>
-          <property name="text">
-           <string>电压</string>
-          </property>
-         </column>
-         <column>
-          <property name="text">
-           <string>温度走势图</string>
-          </property>
-         </column>
-        </widget>
-       </item>
-       <item>
-        <widget class="QWidget" name="widget_2" native="true">
-         <layout class="QVBoxLayout" name="verticalLayout_2">
-          <item>
-           <widget class="QLabel" name="alarmCountLabel">
+        </column>
+        <column>
+         <property name="text">
+          <string>协议</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>状态</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>温度</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>电压</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>温度走势</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>电压走势</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>操作</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="alarmPanel" native="true">
+        <property name="minimumSize">
+         <size>
+          <width>500</width>
+          <height>0</height>
+         </size>
+        </property>
+        <layout class="QVBoxLayout" name="alarmLayout">
+         <property name="spacing">
+          <number>6</number>
+         </property>
+         <property name="leftMargin">
+          <number>1</number>
+         </property>
+         <property name="topMargin">
+          <number>1</number>
+         </property>
+         <property name="rightMargin">
+          <number>1</number>
+         </property>
+         <property name="bottomMargin">
+          <number>1</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="alarmCountLabel">
+           <property name="text">
+    <string>最近报警：0</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="alarmTitleLabel">
+           <property name="text">
+            <string>报警历史</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTableWidget" name="alarmTable">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>1</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>150</height>
+            </size>
+           </property>
+           <column>
             <property name="text">
-             <string>报警事件：</string>
+             <string>设备ID</string>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="label">
+           </column>
+           <column>
+            <property name="text">
+             <string>类型</string>
+            </property>
+           </column>
+           <column>
             <property name="text">
              <string>报警信息</string>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QTableWidget" name="alarmTable">
-            <column>
-             <property name="text">
-              <string>设备ID</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>报警类型</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>报警信息</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>时间</string>
-             </property>
-            </column>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="currentAlarmCountLabel">
+           </column>
+           <column>
             <property name="text">
-             <string>当前报警：</string>
+             <string>时间</string>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QTableWidget" name="currentAlarmTable">
-            <column>
-             <property name="text">
-              <string>设备ID</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>报警类型</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>报警信息</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>发生时间</string>
-             </property>
-            </column>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-      </layout>
-     </widget>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="currentAlarmCountLabel">
+           <property name="text">
+            <string>当前报警：0</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="currentAlarmTitleLabel">
+           <property name="text">
+            <string>当前未恢复报警</string>
+           </property>
+          </widget>
+         </item>
+        <item>
+         <widget class="QPushButton" name="acknowledgeAlarmBtn">
+          <property name="text"><string>确认选中报警</string></property>
+         </widget>
+        </item>
+         <item>
+          <widget class="QTableWidget" name="currentAlarmTable">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>1</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>150</height>
+            </size>
+           </property>
+           <column>
+            <property name="text">
+             <string>设备ID</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>类型</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>报警信息</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>时间</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>1104</width>
-     <height>21</height>
-    </rect>
-   </property>
-  </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <widget class="QDockWidget" name="dockWidget">
-   <attribute name="dockWidgetArea">
-    <number>1</number>
-   </attribute>
-   <widget class="QWidget" name="dockWidgetContents">
-    <layout class="QVBoxLayout" name="verticalLayout_3">
-     <item>
-      <widget class="QPushButton" name="testBtn">
-       <property name="text">
-        <string>测试按钮</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="addDeviceBtn">
-       <property name="text">
-        <string>添加设备</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="mockSerialConfigBtn">
-       <property name="text">
-        <string>模拟串口设备配置</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="tcpServerBtn">
-       <property name="text">
-        <string>启动TCP服务器</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="tcpStatusLabel">
-       <property name="text">
-        <string>服务器状态</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Orientation::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </widget>
-  </widget>
  </widget>
  <resources/>
  <connections/>

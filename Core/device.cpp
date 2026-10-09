@@ -36,8 +36,24 @@ void Device::updateData(){
     }
 
     m_data.isOnline = true;
-    m_data.temperature = 20.0 + QRandomGenerator::global()->generateDouble()*40.0;
-    m_data.voltage = 220.0 + QRandomGenerator::global()->generateDouble()*3.0;
+    ++m_simulationTick;
+
+    // 让模拟曲线连续波动，并周期性越界以便验证报警触发和恢复。
+    const int temperaturePhase = m_simulationTick % 90;
+    if (temperaturePhase >= 15 && temperaturePhase < 22)
+        m_data.temperature = 52.0 + QRandomGenerator::global()->generateDouble() * 4.0;
+    else if (temperaturePhase >= 55 && temperaturePhase < 62)
+        m_data.temperature = 10.0 + QRandomGenerator::global()->generateDouble() * 3.0;
+    else
+        m_data.temperature = 25.0 + QRandomGenerator::global()->generateDouble() * 18.0;
+
+    const int voltagePhase = m_simulationTick % 70;
+    if (voltagePhase >= 28 && voltagePhase < 34)
+        m_data.voltage = 232.0 + QRandomGenerator::global()->generateDouble() * 5.0;
+    else if (voltagePhase >= 48 && voltagePhase < 54)
+        m_data.voltage = 203.0 + QRandomGenerator::global()->generateDouble() * 5.0;
+    else
+        m_data.voltage = 214.0 + QRandomGenerator::global()->generateDouble() * 14.0;
     emit dataUpdated(m_data);
 }
 

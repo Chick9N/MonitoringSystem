@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/assets">
+        <file alias="monitoring-app.svg">monitoring-app.svg</file>
+    </qresource>
+</RCC>

@@ -32,6 +32,7 @@ private:
     DeviceConfig m_config;
     DeviceData m_data;
     bool m_running = false;
+    int m_simulationTick = 0;
 };
 
 #endif // DEVICE_H

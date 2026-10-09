@@ -8,6 +8,7 @@ ModbusTCP::ModbusTCP(QObject *parent)
     , m_reconnectTimer(new QTimer(this))
 {
     connect(m_socket, &QTcpSocket::connected, this, [this]() {
+        m_reconnectTimer->stop();
         qDebug() << "Modbus TCP连接成功";
         emit tcpConnected();
     });
@@ -25,6 +26,10 @@ ModbusTCP::ModbusTCP(QObject *parent)
 
                 qWarning() << "Modbus TCP连接错误:" << error;
                 emit tcpError(error);
+                // 首次连接被拒绝时，Qt 不保证一定先发出 disconnected；
+                // 也要启动重试，否则服务端稍后启动后客户端会一直停在离线。
+                if (!m_ip.isEmpty() && !m_reconnectTimer->isActive())
+                    m_reconnectTimer->start();
             });
 
     m_reconnectTimer->setInterval(3000);
@@ -379,6 +384,26 @@ void ModbusTCP::connectToDevice(
         ip,
         port
         );
+}
+
+void ModbusTCP::restartConnection(const QString &ip, quint16 port)
+{
+    m_ip = ip;
+    m_port = port;
+    m_reconnectTimer->stop();
+    m_buffer.clear();
+    for (const PendingRequest &request : m_pendingRequests) {
+        if (request.timer) {
+            request.timer->stop();
+            request.timer->deleteLater();
+        }
+    }
+    m_pendingRequests.clear();
+    m_socket->abort();
+
+    QTimer::singleShot(0, this, [this, ip, port]() {
+        connectToDevice(ip, port);
+    });
 }
 
 void ModbusTCP::disconnectFromDevice()

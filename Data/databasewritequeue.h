@@ -6,6 +6,7 @@
 #include <QString>
 #include <memory>
 #include "../Core/devicedata.h"
+#include "../Core/alarm.h"
 
 class DatabaseWriterState;
 
@@ -17,6 +18,8 @@ public:
     ~DatabaseWriteQueue() override;
 
     void enqueueDeviceData(int deviceId, const DeviceData &data);
+    void enqueueAlarm(const AlarmInfo &alarm);
+    void enqueueAlarmAcknowledgement(int deviceId, AlarmType type);
 
 private:
     QThread *m_thread = nullptr;

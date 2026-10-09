@@ -8,7 +8,8 @@
 /*
  * 自定义串口的mock
  * 使用外部软件打开Windows虚拟com bridge, COM1<->COM2
- * 下位机使用COM1, 上位机使用COM2
+ * 虚拟串口成对使用：模拟器占用设备侧端口（例如 COM2），
+ * 上位机添加设备时选择配对的另一端（例如 COM1）。
  */
 class MockSerialDevice : public QObject
 {
@@ -28,6 +29,8 @@ public:
     void stop();
 
     bool isRunning() const;
+    QString portName() const;
+    qint32 baudRate() const;
 
 signals:
 

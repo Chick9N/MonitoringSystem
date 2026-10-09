@@ -43,6 +43,7 @@ public:
         );
 
     void connectToDevice(const QString &ip, quint16 port);
+    void restartConnection(const QString &ip, quint16 port);
     void disconnectFromDevice();
     bool sendData(const QByteArray &data);
 

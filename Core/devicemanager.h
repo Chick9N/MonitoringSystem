@@ -25,6 +25,7 @@ public:
     void removeDevice(int deviceId);
     Device* getDevice(int deviceId);
     QList<Device*> devices() const;
+    void restoreActiveAlarms(const QList<AlarmInfo> &alarms);
     void updateDeviceData(
         int deviceId,
         const DeviceData &data
@@ -56,6 +57,7 @@ public:
         const QString &ip,
         quint16 port
         );
+    void reconnectTCPDevices();
 
     bool requestModbusTCPRead(
         quint8 unitId,
@@ -85,6 +87,7 @@ signals:
     void deviceAdded(int deviceId);
 
     void connectTCPRequested(const QString &ip, quint16 port);
+    void restartTCPRequested(const QString &ip, quint16 port);
     void sendTCPReadRequest(
         quint16 transactionId,
         quint8 unitId,
@@ -95,6 +98,7 @@ signals:
     void tcpTestResult(
         bool success,
         QString message);
+    void tcpConnectionChanged(bool connected, const QString &message);
 private:
     QList<Device*> m_devices; // 设备容器
     AlarmManager *m_alarmManager;
@@ -147,6 +151,8 @@ private:
 
     // TCP
     bool m_tcpConnected = false;
+    QString m_tcpEndpointIp;
+    quint16 m_tcpEndpointPort = 0;
     ModbusTCP *m_modbusTCP;
 
     // Modbus TCP 请求状态
@@ -168,6 +174,7 @@ private:
     void pollNextDevice();
 
     void handleModbusRawData(const QByteArray &data);
+    void markDeviceOffline(int deviceId, const QString &reason);
 
     // 多线程
     QThread *m_modbusThread = nullptr;

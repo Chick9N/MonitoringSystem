@@ -5001,3 +5001,710 @@ MainWindow
 3. 完善设备历史数据及趋势显示；
 4. 完成三种通信方式的系统集成测试；
 5. 根据最终功能完善需求分析及设计文档。
+
+## 2026-10-08 开发日志 —— 设备监控上位机系统
+
+### 一、今日开发内容概述
+
+今日主要围绕**项目架构优化、模块解耦、数据库职责调整、UI整理以及通信层结构完善**展开。
+
+开发重点从“功能实现阶段”进入“工程化重构阶段”，针对前期快速迭代过程中产生的冗余代码、模块耦合以及职责混乱问题进行整理，提高项目可维护性和后续扩展能力。
+
+---
+
+# 1. 项目代码冗余清理与架构检查
+
+使用代码分析工具对项目整体结构进行检查，重点分析：
+
+* 未使用变量
+* 废弃函数
+* 重复功能实现
+* 与当前架构不一致的旧代码
+* 无调用方接口
+
+完成核心代码清理。
+
+## 主要修改：
+
+### （1）统一设备启动加载流程
+
+删除：
+
+* 旧同步启动加载函数
+* 未使用数据库查询接口
+
+调整后：
+
+启动设备恢复统一由：
+
+```cpp
+DatabaseManager::loadStartupSnapshot()
+```
+
+负责。
+
+避免：
+
+* UI层直接编写SQL
+* 多套设备加载逻辑并存
+
+---
+
+### （2）Device类职责简化
+
+删除 Device 中与 DeviceConfig 重复保存的数据：
+
+例如：
+
+* 设备名称
+* 协议类型
+
+原因：
+
+当前架构中：
+
+```
+DeviceConfig
+        |
+        ↓
+Device
+```
+
+Device只需要管理：
+
+* 当前设备状态
+* 实时数据
+* 信号通知
+
+配置数据统一由 DeviceConfig 管理。
+
+同时删除：
+
+```cpp
+Device::isRunning()
+```
+
+原因：
+
+无实际调用方。
+
+---
+
+### （3）移除 DeviceManager 全局状态
+
+删除：
+
+```cpp
+DeviceManager::m_dataSource
+```
+
+原因：
+
+设备来源不应该由全局状态决定。
+
+修改前：
+
+```
+DeviceManager
+       |
+       |
+ 当前数据源
+```
+
+导致：
+
+多个设备情况下可能出现：
+
+```
+设备A  串口
+设备B  TCP
+
+但是全局状态只有一个
+```
+
+修改后：
+
+每个设备根据：
+
+```cpp
+DeviceConfig
+```
+
+自行判断：
+
+* 数据来源
+* 协议类型
+* 通信参数
+
+---
+
+### （4）删除重复模拟逻辑
+
+移除：
+
+* DeviceManager内部Modbus RTU模拟响应
+* 串口数据注入测试入口
+
+原因：
+
+项目已经存在独立模拟设备：
+
+```
+MockModbusRTUDevice
+```
+
+继续保留内部模拟会造成：
+
+```
+DeviceManager
+      |
+      |
+ 模拟设备
+```
+
+和：
+
+```
+MockModbusRTUDevice
+```
+
+双重实现。
+
+最终统一：
+
+```
+Mock设备层
+      |
+      |
+真实通信流程
+```
+
+---
+
+### （5）清理工程文件
+
+删除：
+
+* 空 Logger 类
+* CMake重复源文件
+* 大小写重复路径
+
+检查：
+
+```
+git diff --check
+```
+
+通过。
+
+---
+
+# 2. TCP服务器与UI解耦
+
+## 原问题
+
+之前：
+
+```
+MainWindow
+     |
+     |
+MockModbusTCPServer
+```
+
+UI直接控制具体模拟服务器。
+
+存在问题：
+
+如果未来替换：
+
+* 真实Modbus TCP Server
+* 测试Server
+* 其他通信实现
+
+需要修改UI代码。
+
+---
+
+## 修改后结构
+
+新增：
+
+```
+TcpServerService
+```
+
+作为服务接口。
+
+新的结构：
+
+```
+MainWindow
+
+     |
+     |
+TcpServerService
+
+     |
+     |
+MockModbusTCPServer
+```
+
+MainWindow只关心：
+
+```cpp
+start()
+stop()
+isRunning()
+```
+
+以及状态信号：
+
+```cpp
+stateChanged()
+errorOccurred()
+```
+
+---
+
+## 工厂模式创建服务
+
+新增：
+
+```cpp
+createTcpServerService()
+```
+
+当前：
+
+返回：
+
+```
+MockTcpServerService
+```
+
+以后：
+
+可以替换：
+
+```
+RealTcpServerService
+```
+
+而不用修改UI。
+
+---
+
+# 3. DeviceManager通信架构优化
+
+发现问题：
+
+DeviceManager：
+
+* 管理设备
+* 管理通信
+* 管理数据库
+* 管理持久化
+
+职责过重。
+
+进行了部分拆分。
+
+---
+
+# 4. 设备数据写入数据库异步化
+
+## 修改前
+
+流程：
+
+```
+DeviceManager
+
+      ↓
+
+MainWindow
+
+      ↓
+
+DatabaseManager
+
+      ↓
+
+SQLite
+```
+
+问题：
+
+设备数据频繁刷新时：
+
+UI线程直接执行SQL。
+
+可能导致：
+
+* UI卡顿
+* 数据库锁等待
+
+---
+
+## 修改后
+
+新增：
+
+```
+DatabaseWriteQueue
+```
+
+结构：
+
+```
+DeviceManager
+
+      ↓
+
+MainWindow
+
+      ↓
+
+DatabaseWriteQueue
+
+      ↓
+
+数据库线程
+
+      ↓
+
+SQLite
+```
+
+UI只负责提交任务。
+
+数据库写入独立线程执行。
+
+---
+
+# 5. DeviceManager数据库依赖解耦
+
+新增：
+
+```cpp
+DeviceRepository
+```
+
+接口。
+
+修改前：
+
+```
+DeviceManager
+        |
+        |
+DatabaseManager
+```
+
+修改后：
+
+```
+DeviceManager
+
+        |
+
+DeviceRepository
+
+        |
+
+DatabaseManager
+```
+
+优势：
+
+DeviceManager不再依赖：
+
+* SQLite
+* SQL语句
+* DatabaseManager具体实现
+
+未来可以替换：
+
+* MySQL
+* 文件存储
+* 网络数据库
+
+---
+
+# 6. 串口设备管理逻辑完善
+
+发现问题：
+
+原逻辑：
+
+```cpp
+if(serialPort->isOpen())
+    return true;
+```
+
+存在隐患。
+
+例如：
+
+设备A:
+
+```
+COM1
+9600
+8N1
+```
+
+已经打开。
+
+设备B:
+
+```
+COM2
+115200
+8E1
+```
+
+添加时：
+
+仍然复用旧串口。
+
+---
+
+修改：
+
+增加当前串口配置记录：
+
+检查：
+
+* 串口名称
+* 波特率
+* 数据位
+* 校验位
+* 停止位
+* 协议类型
+
+不匹配：
+
+拒绝添加。
+
+删除最后一个串口设备：
+
+自动：
+
+* 关闭串口
+* 清理缓存配置
+
+---
+
+# 7. UI界面整理
+
+完成4个UI文件整理：
+
+包括：
+
+* MainWindow
+* DeviceWidget
+* AddDeviceDialog
+* MockSerialConfigWindow
+
+---
+
+## MainWindow调整
+
+修改：
+
+* 顶部操作区域布局
+* 设备表格尺寸
+* 报警区域布局
+
+优化：
+
+* 最小窗口尺寸
+* 表格列宽策略
+* 控件自适应
+
+---
+
+## 删除无效控件
+
+移除：
+
+* 无实际功能测试按钮
+* DeviceWidget通信控制按钮
+
+原因：
+
+设备通信应该由：
+
+```
+DeviceManager
+```
+
+管理。
+
+详情窗口只负责：
+
+* 展示
+* 历史查询
+* 数据分析
+
+---
+
+## 模拟串口界面优化
+
+删除：
+
+固定配置：
+
+* 数据位
+* 校验位
+* 停止位
+
+原因：
+
+当前：
+
+Modbus RTU固定：
+
+```
+8N1
+```
+
+避免用户修改无效参数。
+
+---
+
+# 8. 当前项目架构状态
+
+目前整体结构：
+
+```
+                 MainWindow
+                      |
+        -----------------------------
+        |                           |
+ DeviceManager              TcpServerService
+        |                           |
+        |                           |
+ DeviceRepository            MockTCPServer
+        |
+        |
+ Device
+        |
+        |
+ Communication Layer
+        |
+ ----------------------
+ |          |          |
+Serial    Modbus     TCP
+```
+
+数据库：
+
+```
+DatabaseManager
+        |
+SQLite
+```
+
+后台写入：
+
+```
+DatabaseWriteQueue
+```
+
+---
+
+# 今日Git提交建议
+
+建议拆成多个commit：
+
+---
+
+## Commit 1
+
+```
+refactor: clean unused code and simplify device architecture
+```
+
+内容：
+
+* 删除废弃函数
+* 清理重复字段
+* 移除无用模拟逻辑
+* 清理CMake
+
+---
+
+## Commit 2
+
+```
+refactor: decouple tcp server service from main window
+```
+
+内容：
+
+* 新增TcpServerService
+* MainWindow解除MockServer依赖
+* 增加服务工厂
+
+---
+
+## Commit 3
+
+```
+refactor: decouple database access from device manager
+```
+
+内容：
+
+* 新增DeviceRepository
+* 数据写入队列
+* 数据库线程化
+
+---
+
+## Commit 4
+
+```
+ui: optimize layouts and remove obsolete controls
+```
+
+内容：
+
+* UI布局调整
+* 删除无效按钮
+* 优化窗口显示
+
+---
+
+# 今日开发评价
+
+今天不是新增功能开发，而是一次比较重要的**架构整理日**。
+
+项目从：
+
+> 能运行的Qt通信Demo
+
+开始向：
+
+> 具有分层结构、可扩展通信框架的工业上位机软件
+
+转变。
+
+尤其完成：
+
+* UI与通信实现解耦
+* DeviceManager职责收敛
+* 数据库访问隔离
+* 模拟设备独立化
+
+这些修改对于后续继续扩展：
+
+* 多设备
+* 多协议
+* 真实设备接入
+* 工业现场部署
+
+价值较高。
