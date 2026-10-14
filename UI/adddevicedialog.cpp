@@ -10,23 +10,23 @@
 
 AddDeviceDialog::AddDeviceDialog(QWidget *parent)
     : QDialog(parent)
-    , ui(new Ui::AddDeviceDialog)
+    , m_ui(new Ui::AddDeviceDialog)
 {
-    ui->setupUi(this);
+    m_ui->setupUi(this);
     // Modbus TCP 的 Unit Identifier 不能为 0（本系统也不支持广播请求）。
-    ui->tcpUnitIdSpinBox->setRange(1, 255);
-    ui->serialPortComboBox->addItems(SerialPort::availablePorts());
-    ui->rtuPortComboBox->addItems(SerialPort::availablePorts());
+    m_ui->tcpUnitIdSpinBox->setRange(1, 255);
+    m_ui->serialPortComboBox->addItems(SerialPort::availablePorts());
+    m_ui->rtuPortComboBox->addItems(SerialPort::availablePorts());
 }
 
 AddDeviceDialog::~AddDeviceDialog()
 {
-    delete ui;
+    delete m_ui;
 }
 
 void AddDeviceDialog::on_protocolComboBox_currentIndexChanged(int index)
 {
-    ui->configStackedWidget->setCurrentIndex(index);
+    m_ui->configStackedWidget->setCurrentIndex(index);
 }
 
 
@@ -44,7 +44,7 @@ void AddDeviceDialog::on_buttonBox_rejected()
 void AddDeviceDialog::accept()
 {
     // 检查设备名称
-    QString name = ui->nameEdit->text().trimmed();
+    QString name = m_ui->nameEdit->text().trimmed();
 
     if (name.isEmpty()) {
         QMessageBox::warning(
@@ -57,9 +57,9 @@ void AddDeviceDialog::accept()
     }
 
     if (static_cast<ProtocolType>(
-        ui->protocolComboBox->currentIndex())
+        m_ui->protocolComboBox->currentIndex())
         == ProtocolType::ModbusTCP) {
-        if (!ui->ipWidget->isValid()) {
+        if (!m_ui->ipWidget->isValid()) {
             QMessageBox::warning(
                 this,
                 "输入错误",
@@ -68,8 +68,8 @@ void AddDeviceDialog::accept()
             return;
         }
 
-        if (ui->tcpUnitIdSpinBox->value() < 1 ||
-            ui->tcpUnitIdSpinBox->value() > 247) {
+        if (m_ui->tcpUnitIdSpinBox->value() < 1 ||
+            m_ui->tcpUnitIdSpinBox->value() > 247) {
             QMessageBox::warning(
                 this,
                 "输入错误",
@@ -79,8 +79,8 @@ void AddDeviceDialog::accept()
         }
     }
 
-    if (ui->temperatureLowSpinBox->value() >= ui->temperatureHighSpinBox->value() ||
-        ui->voltageLowSpinBox->value() >= ui->voltageHighSpinBox->value()) {
+    if (m_ui->temperatureLowSpinBox->value() >= m_ui->temperatureHighSpinBox->value() ||
+        m_ui->voltageLowSpinBox->value() >= m_ui->voltageHighSpinBox->value()) {
         QMessageBox::warning(this, "输入错误", "报警上限必须大于对应的下限。");
         return;
     }
@@ -100,16 +100,16 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
     // 不设置deviceId
 
     config.deviceName =
-        ui->nameEdit->text().trimmed();
+        m_ui->nameEdit->text().trimmed();
 
     config.protocolType =
         static_cast<ProtocolType>(
-            ui->protocolComboBox->currentIndex()
+            m_ui->protocolComboBox->currentIndex()
             );
-    config.temperatureLow = ui->temperatureLowSpinBox->value();
-    config.temperatureHigh = ui->temperatureHighSpinBox->value();
-    config.voltageLow = ui->voltageLowSpinBox->value();
-    config.voltageHigh = ui->voltageHighSpinBox->value();
+    config.temperatureLow = m_ui->temperatureLowSpinBox->value();
+    config.temperatureHigh = m_ui->temperatureHighSpinBox->value();
+    config.voltageLow = m_ui->voltageLowSpinBox->value();
+    config.voltageHigh = m_ui->voltageHighSpinBox->value();
 
 
     // ==============================
@@ -126,19 +126,19 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
             DataSource::Serial;
 
         config.serialPort =
-            ui->serialPortComboBox->currentText();
+            m_ui->serialPortComboBox->currentText();
 
         config.baudRate =
-            ui->baudRateComboBox->currentText().toInt();
+            m_ui->baudRateComboBox->currentText().toInt();
 
         config.dataBits =
-            ui->dataBitsComboBox->currentText().toInt();
+            m_ui->dataBitsComboBox->currentText().toInt();
 
         config.parity =
-            ui->parityComboBox->currentText();
+            m_ui->parityComboBox->currentText();
 
         config.stopBits =
-            ui->stopBitsComboBox->currentText().toInt();
+            m_ui->stopBitsComboBox->currentText().toInt();
 
         break;
     }
@@ -154,10 +154,10 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
 
         // 串口基本参数
         config.serialPort =
-            ui->rtuPortComboBox->currentText();
+            m_ui->rtuPortComboBox->currentText();
 
         config.baudRate =
-            ui->baudRateComboBox->currentText().toInt();
+            m_ui->baudRateComboBox->currentText().toInt();
 
         // 当前项目 RTU 固定使用 8N1
         config.dataBits = 8;
@@ -166,13 +166,13 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
 
         // Modbus RTU 参数
         config.rtuSlaveId =
-            ui->rtuSlaveIdSpinBox->value();
+            m_ui->rtuSlaveIdSpinBox->value();
 
         config.rtuStartAddress =
-            ui->rtuStartAddressSpinBox->value();
+            m_ui->rtuStartAddressSpinBox->value();
 
         config.rtuQuantity =
-            ui->rtuQuantitySpinBox->value();
+            m_ui->rtuQuantitySpinBox->value();
 
         break;
     }
@@ -187,19 +187,19 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
             DataSource::TCP;
 
         config.tcpIp =
-            ui->ipWidget->address();
+            m_ui->ipWidget->address();
 
         config.tcpPort =
-            ui->tcpPortSpinBox->value();
+            m_ui->tcpPortSpinBox->value();
 
         config.tcpUnitId =
-            ui->tcpUnitIdSpinBox->value();
+            m_ui->tcpUnitIdSpinBox->value();
 
         config.tcpStartAddress =
-            ui->tcpStartAddressSpinBox->value();
+            m_ui->tcpStartAddressSpinBox->value();
 
         config.tcpQuantity =
-            ui->tcpQuantitySpinBox->value();
+            m_ui->tcpQuantitySpinBox->value();
 
         break;
     }
@@ -211,10 +211,10 @@ DeviceConfig AddDeviceDialog::getDeviceConfig() const
 void AddDeviceDialog::on_testConnectionBtn_clicked()
 {
 
-    QString ip = ui->ipWidget->address();
+    QString ip = m_ui->ipWidget->address();
 
     quint16 port =
-        ui->tcpPortSpinBox->value();
+        m_ui->tcpPortSpinBox->value();
 
 
     // IP校验
@@ -245,7 +245,7 @@ void AddDeviceDialog::on_testConnectionBtn_clicked()
         return;
     }
 
-    ui->testConnectionBtn->setEnabled(false);
+    m_ui->testConnectionBtn->setEnabled(false);
 
     emit testTCPConnection(
         ip,
@@ -258,15 +258,15 @@ void AddDeviceDialog::onTCPTestResult(
     const QString &message
     )
 {
-    ui->testConnectionBtn->setEnabled(true);
+    m_ui->testConnectionBtn->setEnabled(true);
     if(success)
     {
-        ui->connectionStatusLabel->setText("● 连接成功");
-        ui->connectionStatusLabel->setStyleSheet(QStringLiteral("color:#16A34A;font-weight:600"));
+        m_ui->connectionStatusLabel->setText("● 连接成功");
+        m_ui->connectionStatusLabel->setStyleSheet(QStringLiteral("color:#16A34A;font-weight:600"));
     }
     else
     {
-        ui->connectionStatusLabel->setText("● 连接失败："+message);
-        ui->connectionStatusLabel->setStyleSheet(QStringLiteral("color:#DC2626;font-weight:600"));
+        m_ui->connectionStatusLabel->setText("● 连接失败："+message);
+        m_ui->connectionStatusLabel->setStyleSheet(QStringLiteral("color:#DC2626;font-weight:600"));
     }
 }

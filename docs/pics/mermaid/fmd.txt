@@ -1,0 +1,53 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '50px'}}}%%
+flowchart TB
+    ROOT[设备监控上位机]
+
+    ROOT --> DM[设备管理]
+    DM --> D1[添加设备]
+    DM --> D2[删除设备]
+    DM --> D3[修改/查看配置]
+    DM --> D4[设备状态管理]
+
+    ROOT --> CM[通信管理]
+    CM --> C1[串口自定义协议]
+    CM --> C2[Modbus RTU]
+    CM --> C3[Modbus TCP]
+    CM --> C4[模拟通信]
+
+    ROOT --> MON[数据监控]
+    MON --> M1[实时状态显示]
+    MON --> M2[温度/电压监控]
+    MON --> M3[趋势曲线]
+
+    ROOT --> DATA[数据管理]
+    DATA --> H1[历史数据存储]
+    DATA --> H2[历史查询]
+
+    ROOT --> AL[报警管理]
+    AL --> A1[阈值/离线检测]
+    AL --> A2[报警去重与恢复]
+    AL --> A3[报警提示与确认]
+
+    ROOT --> TEST[自检与日志]
+    TEST --> T1[一键自检]
+    TEST --> T2[日志查看]
+    TEST --> T3[模拟服务启停]
+
+    %% 模块配色
+    classDef root fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a;
+    classDef dm fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d;
+    classDef cm fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#5b21b6;
+    classDef mon fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#92400e;
+    classDef data fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155;
+    classDef al fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#991b1b;
+    classDef test fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#075985;
+    classDef leaf fill:#ffffff,stroke:#cbd5e1,stroke-width:1px,color:#475569;
+
+    class ROOT root;
+    class DM dm;
+    class CM cm;
+    class MON mon;
+    class DATA data;
+    class AL al;
+    class TEST test;
+    class D1,D2,D3,D4,C1,C2,C3,C4,M1,M2,M3,H1,H2,A1,A2,A3,T1,T2,T3 leaf;

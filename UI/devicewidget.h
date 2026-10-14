@@ -19,49 +19,48 @@ class DeviceWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit DeviceWidget(Device *device,DatabaseManager *databaseManager,QWidget *parent = nullptr);
+    explicit DeviceWidget(
+        Device *device,
+        DatabaseManager *databaseManager,
+        QWidget *parent = nullptr);
     ~DeviceWidget();
 
 private slots:
     void updateWidget(const DeviceData &data);
-
     void on_queryHistoryButton_clicked();
 
 private:
+    // 设备管理器和设备的生命周期长于详情窗口；图表对象由窗口持有。
+    Ui::DeviceWidget *m_ui = nullptr;
+    Device *m_device = nullptr;
+    DatabaseManager *m_databaseManager = nullptr;
+    QFutureWatcher<QList<DeviceHistory>> *m_historyWatcher = nullptr;
+
+    // 实时图表控件、坐标轴和数据序列。
+    QChartView *m_temperatureChartView = nullptr;
+    QChartView *m_voltageChartView = nullptr;
+    QDateTimeAxis *m_temperatureAxisX = nullptr;
+    QValueAxis *m_temperatureAxisY = nullptr;
+    QDateTimeAxis *m_voltageAxisX = nullptr;
+    QValueAxis *m_voltageAxisY = nullptr;
+    QLineSeries *m_temperatureSeries = nullptr;
+    QLineSeries *m_voltageSeries = nullptr;
+
+    // 历史图表使用独立数据序列，查询历史区间时不会覆盖实时曲线。
+    QChartView *m_historyTemperatureChartView = nullptr;
+    QChartView *m_historyVoltageChartView = nullptr;
+    QDateTimeAxis *m_historyTemperatureAxisX = nullptr;
+    QDateTimeAxis *m_historyVoltageAxisX = nullptr;
+    QValueAxis *m_historyTemperatureAxisY = nullptr;
+    QValueAxis *m_historyVoltageAxisY = nullptr;
+    QLineSeries *m_historyTemperatureSeries = nullptr;
+    QLineSeries *m_historyVoltageSeries = nullptr;
+
     void setupCharts();
     void updateCharts(const DeviceData &data);
     void setupHistoryCharts();
     void updateHistoryCharts(const QList<DeviceHistory> &history);
-    QList<DeviceHistory> sampleHistory(
-        const QList<DeviceHistory> &history,
-        int maxPoints);
-    Ui::DeviceWidget *ui;
-    Device *m_device;
-    DatabaseManager *m_databaseManager;
-
-    QChartView *m_temperatureChartView;
-    QChartView *m_voltageChartView;
-
-    QDateTimeAxis *m_temperatureAxisX;
-    QValueAxis *m_temperatureAxisY;
-    QDateTimeAxis *m_voltageAxisX;
-    QValueAxis *m_voltageAxisY;
-
-    QLineSeries *m_temperatureSeries;
-    QLineSeries *m_voltageSeries;
-
-    QLineSeries *m_historyTemperatureSeries;
-    QLineSeries *m_historyVoltageSeries;
-
-    QChartView *m_historyTemperatureChartView;
-    QChartView *m_historyVoltageChartView;
-
-    QDateTimeAxis *m_historyTemperatureAxisX;
-    QDateTimeAxis *m_historyVoltageAxisX;
-
-    QValueAxis *m_historyTemperatureAxisY;
-    QValueAxis *m_historyVoltageAxisY;
-    QFutureWatcher<QList<DeviceHistory>> *m_historyWatcher = nullptr;
+    QList<DeviceHistory> sampleHistory(const QList<DeviceHistory> &history, int maxPoints);
 };
 
 #endif // DEVICEWIDGET_H

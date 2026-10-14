@@ -1,0 +1,44 @@
+erDiagram
+    DEVICE ||--o{ DEVICE_HISTORY : "拥有采样"
+    DEVICE ||--o{ ALARM_HISTORY : "产生报警/恢复事件"
+
+    DEVICE {
+      INTEGER device_id PK
+      TEXT device_name
+      INTEGER data_source
+      INTEGER protocol_type
+      TEXT serial_port
+      INTEGER baud_rate
+      INTEGER data_bits
+      INTEGER stop_bits
+      TEXT parity
+      INTEGER rtu_slave_id
+      INTEGER rtu_start_address
+      INTEGER rtu_quantity
+      TEXT tcp_ip
+      INTEGER tcp_port
+      INTEGER tcp_unit_id
+      INTEGER tcp_start_address
+      INTEGER tcp_quantity
+      REAL temperature_low
+      REAL temperature_high
+      REAL voltage_low
+      REAL voltage_high
+    }
+    DEVICE_HISTORY {
+      INTEGER id PK
+      INTEGER device_id
+      REAL temperature
+      REAL voltage
+      INTEGER online
+      DATETIME timestamp
+    }
+    ALARM_HISTORY {
+      INTEGER id PK
+      INTEGER device_id
+      INTEGER alarm_type
+      TEXT message
+      INTEGER recovered
+      DATETIME timestamp
+      INTEGER acknowledged
+    }

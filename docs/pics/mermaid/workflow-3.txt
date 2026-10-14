@@ -1,0 +1,37 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '15px'}}}%%
+flowchart TD
+    A([轮询定时器到期]) --> B[选择下一台待采设备]
+    B --> C[按协议构造请求]
+    C --> D[串口/TCP/模拟器发送]
+    D --> E{是否在超时前收到完整响应?}
+    E -- 否 --> F[按超时规则标记离线并记录通信错误]
+    F --> G[执行离线报警判断]
+    E -- 是 --> H[校验地址、事务、功能码、长度和校验码]
+    H --> I{协议和字段校验通过?}
+    I -- 否 --> J[丢弃响应并记录协议诊断]
+    I -- 是 --> K[解析并标准化温度、电压和在线状态]
+    K --> L[更新设备运行数据或通信状态]
+    L --> M[刷新实时界面]
+    L --> N[异步写入采样/状态记录]
+    L --> O[执行阈值、离线和恢复判断]
+    G --> P[调度下一台设备]
+    J --> P
+    M --> P
+    N --> P
+    O --> P
+    P --> Q([下一轮轮询])
+
+    %% 节点形状与配色分区
+    classDef startEnd fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#92400e;
+    classDef success fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef fail fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#991b1b;
+    classDef normal fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px;
+    classDef dispatch fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#5b21b6;
+
+    class A,Q startEnd;
+    class E,I decision;
+    class K,L success;
+    class F,J fail;
+    class B,C,D,H normal;
+    class G,M,N,O,P dispatch;

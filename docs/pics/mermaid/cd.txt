@@ -1,0 +1,94 @@
+classDiagram
+    class MainWindow {
+      +loadDevices()
+      +handleDeviceDataUpdated(id, data)
+      +handleAlarm(alarm)
+      +startTcpServer()
+    }
+    class DeviceWidget {
+      +updateDeviceData(data)
+      +updateConnectionStatus(online)
+    }
+    class DeviceManager {
+      +addDevice(device)
+      +removeDevice(deviceId)
+      +startSimulationDevices()
+      +stopSimulationDevices()
+      +updateDeviceData(deviceId, data)
+    }
+    class Device {
+      -m_id: int
+      -m_config: DeviceConfig
+      -m_data: DeviceData
+      -m_running: bool
+      +updateData()
+      +start()
+      +stop()
+      +isRunning()
+    }
+    class Communication {
+      <<logical responsibility>>
+      +connect(params)
+      +send(request)
+      +disconnect()
+    }
+    class SerialPort {
+      +open(params)
+      +close()
+      +sendData(data)
+      +rawDataReceived(data)
+    }
+    class ModbusRTU {
+      +buildReadHoldingRegistersRequest()
+      +parseReadHoldingRegistersResponse()
+    }
+    class ModbusTCP {
+      +connectToDevice(ip, port)
+      +sendReadHoldingRegistersRequest()
+      +disconnectFromDevice()
+    }
+    class AlarmManager {
+      -m_activeAlarms
+      +checkDeviceData(id, data, config)
+      +restoreActiveAlarms(alarms)
+    }
+    class DatabaseManager {
+      -m_database: QSqlDatabase
+      +openDatabase()
+      +loadStartupSnapshot(path)
+      +loadDeviceHistorySnapshot(...)
+      +insertDevice(config)
+      +deleteDevice(deviceId)
+    }
+    class DeviceRepository {
+      <<interface>>
+      +deleteDevice(deviceId): bool
+    }
+    class DatabaseWriteQueue {
+      -m_thread: QThread
+      +enqueueDeviceData(deviceId, data)
+      +enqueueAlarm(alarm)
+      +enqueueAlarmAcknowledgement(deviceId, type)
+    }
+    class TcpServerService {
+      <<interface>>
+      +start(port)
+      +stop()
+      +isRunning()
+    }
+
+    MainWindow o-- DeviceWidget : 展示
+    MainWindow --> DeviceManager : 操作调用
+    DeviceManager ..> MainWindow : 数据/状态/报警信号
+    MainWindow --> TcpServerService : 服务生命周期
+    MainWindow --> DatabaseManager : 新增配置/读取快照
+    MainWindow --> DatabaseWriteQueue : 异步提交采样/报警/确认
+    DeviceManager o-- Device : 管理多个
+    DeviceManager --> SerialPort : 使用共享串口
+    DeviceManager --> ModbusRTU : RTU解析/构帧
+    DeviceManager --> ModbusTCP : 工作线程对象
+    DeviceManager --> AlarmManager : 报警检查
+    DeviceManager --> DeviceRepository : 删除设备
+    DatabaseManager ..|> DeviceRepository
+    DatabaseManager --> SQLite : 管理连接
+    DatabaseWriteQueue --> SQLite : 写线程独立连接

@@ -34,6 +34,7 @@ public:
     bool start(quint16 port = 1502);
     void stop();
     bool isRunning() const;
+    quint16 serverPort() const;
     QString errorString() const;
     void processRequest(QTcpSocket *socket, const QByteArray &frame);
 
@@ -48,13 +49,13 @@ private slots:
     void updateMockDevices();
 private:
     // 监听本地 TCP 端口
-    QTcpServer *m_server;
+    QTcpServer *m_server = nullptr;
     QHash<QTcpSocket*, QByteArray> m_clientBuffers;
 
     // 模拟数据
     QMap<quint8, MockDeviceData> m_devices;
 
-    QTimer *m_updateTimer;
+    QTimer *m_updateTimer = nullptr;
     QString m_lastError;
 
 };

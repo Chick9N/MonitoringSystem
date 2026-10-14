@@ -11,7 +11,7 @@
 
 struct PendingRequest
 {
-    QTimer *timer;
+    QTimer *timer = nullptr;
 };
 
 class ModbusTCP : public QObject
@@ -66,12 +66,12 @@ signals:
     void tcpError(const QString &error);
     void requestTimeout(quint16 transactionId);
 private:
-    QTcpSocket *m_socket;
+    QTcpSocket *m_socket = nullptr;
     QByteArray m_buffer;
     // 从 TCP 缓冲区提取完整 Modbus TCP 帧
     bool tryExtractFrame(QByteArray &frame);
     QMap<quint16, PendingRequest> m_pendingRequests;
-    QTimer *m_reconnectTimer;
+    QTimer *m_reconnectTimer = nullptr;
 
     QString m_ip;
     quint16 m_port;

@@ -2,7 +2,10 @@
 
 #include <QRandomGenerator>
 #include <QDebug>
-Device::Device(int id,QObject *parent):QObject(parent),m_id(id) {
+Device::Device(int id, QObject *parent)
+    : QObject(parent)
+    , m_id(id)
+{
     m_data.temperature = 25.0;
     m_data.voltage = 220.0;
     m_data.isOnline = true;
@@ -78,4 +81,9 @@ void Device::stop()
     m_data.isOnline = false;
 
     emit dataUpdated(m_data);
+}
+
+bool Device::isRunning() const
+{
+    return m_running;
 }

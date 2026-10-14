@@ -11,14 +11,15 @@
 #include <QtConcurrent/QtConcurrentRun>
 DeviceWidget::DeviceWidget(Device *device, DatabaseManager *databaseManager, QWidget *parent)
     : QWidget(parent)
-    , m_databaseManager(databaseManager) // 直接复用数据库链接
-    , ui(new Ui::DeviceWidget)
+    , m_ui(new Ui::DeviceWidget)
     , m_device(device)
+    , m_databaseManager(databaseManager)
 {
-    ui->setupUi(this);
+    m_ui->setupUi(this);
 
-    setAttribute(Qt::WA_DeleteOnClose); // 不写这句, 会出现无法再次打开详情页的bug. 因为对象没有被销毁而是隐藏.
-    setWindowFlag(Qt::Window); // 建立新窗口
+    // 详情窗口关闭后会销毁，之后再次双击设备时可以重新创建完整窗口。
+    setAttribute(Qt::WA_DeleteOnClose);
+    setWindowFlag(Qt::Window);
 
     connect(m_device,
             &Device::dataUpdated,
@@ -34,8 +35,8 @@ DeviceWidget::DeviceWidget(Device *device, DatabaseManager *databaseManager, QWi
             this, [this]() {
         const QList<DeviceHistory> history = m_historyWatcher->result();
         updateHistoryCharts(sampleHistory(history, 300));
-        ui->queryHistoryButton->setEnabled(true);
-        ui->queryHistoryButton->setText(QStringLiteral("查询"));
+        m_ui->queryHistoryButton->setEnabled(true);
+        m_ui->queryHistoryButton->setText(QStringLiteral("查询"));
     });
 
     updateWidget(m_device->data());
@@ -43,32 +44,32 @@ DeviceWidget::DeviceWidget(Device *device, DatabaseManager *databaseManager, QWi
 
 DeviceWidget::~DeviceWidget()
 {
-    delete ui;
+    delete m_ui;
 }
 
 void DeviceWidget::updateWidget(const DeviceData &data){
-    ui->statusLabel->setText(data.isOnline ? "● 状态：在线":"● 状态：离线");
-    ui->statusLabel->setStyleSheet(data.isOnline
+    m_ui->statusLabel->setText(data.isOnline ? "● 状态：在线":"● 状态：离线");
+    m_ui->statusLabel->setStyleSheet(data.isOnline
         ? QStringLiteral("color:#16A34A;font-weight:700")
         : QStringLiteral("color:#DC2626;font-weight:700"));
     if(data.isOnline){
-        ui->deviceNameLabel->setText(
+        m_ui->deviceNameLabel->setText(
             QString("设备编号：%1").arg(m_device->id())
             );
 
-        ui->temperatureLabel->setText(
+        m_ui->temperatureLabel->setText(
             QString("温度：%1 ℃").arg(data.temperature,0,'f',1)
         );
 
-        ui->voltageLabel->setText(
+        m_ui->voltageLabel->setText(
             QString("电压：%1 V").arg(data.voltage,0,'f',1)
             );
 
         updateCharts(data);
     }else{
-        ui->deviceNameLabel->setText("设备编号：--");
-        ui->temperatureLabel->setText("温度：--");
-        ui->voltageLabel->setText("电压：--");
+        m_ui->deviceNameLabel->setText("设备编号：--");
+        m_ui->temperatureLabel->setText("温度：--");
+        m_ui->voltageLabel->setText("电压：--");
     }
 }
 
@@ -181,14 +182,14 @@ void DeviceWidget::setupCharts()
 
     // 把温度图放进 UI
     QLayout *temperatureLayout =
-        ui->temperatureChartWidget->layout();
+        m_ui->temperatureChartWidget->layout();
 
     temperatureLayout->setContentsMargins(0, 0, 0, 0);
     temperatureLayout->addWidget(m_temperatureChartView);
 
     // 把电压图放进 UI
     QLayout *voltageLayout =
-        ui->voltageChartWidget->layout();
+        m_ui->voltageChartWidget->layout();
 
     voltageLayout->setContentsMargins(0, 0, 0, 0);
     voltageLayout->addWidget(m_voltageChartView);
@@ -253,7 +254,7 @@ void DeviceWidget::on_queryHistoryButton_clicked()
     QDateTime endTime = QDateTime::currentDateTime();
     QDateTime startTime;
 
-    switch (ui->historyRangeComboBox->currentIndex())
+    switch (m_ui->historyRangeComboBox->currentIndex())
     {
     case 0:
         startTime = endTime.addSecs(-60);
@@ -277,8 +278,8 @@ void DeviceWidget::on_queryHistoryButton_clicked()
 
     const QString databasePath = m_databaseManager->databasePath();
     const int deviceId = m_device->id();
-    ui->queryHistoryButton->setEnabled(false);
-    ui->queryHistoryButton->setText(QStringLiteral("查询中…"));
+    m_ui->queryHistoryButton->setEnabled(false);
+    m_ui->queryHistoryButton->setText(QStringLiteral("查询中…"));
     m_historyWatcher->setFuture(QtConcurrent::run(
         [databasePath, deviceId, startTime, endTime]() {
             return DatabaseManager::loadDeviceHistorySnapshot(
@@ -477,23 +478,23 @@ void DeviceWidget::setupHistoryCharts()
     // 放入布局
     // 把温度图放进 UI
     QLayout *temperatureLayout =
-        ui->historyTemperatureChartWidget->layout();
+        m_ui->historyTemperatureChartWidget->layout();
 
     temperatureLayout->setContentsMargins(0, 0, 0, 0);
     temperatureLayout->addWidget(m_historyTemperatureChartView);
 
     // 把电压图放进 UI
     QLayout *voltageLayout =
-        ui->historyVoltageChartWidget->layout();
+        m_ui->historyVoltageChartWidget->layout();
 
     voltageLayout->setContentsMargins(0, 0, 0, 0);
     voltageLayout->addWidget(m_historyVoltageChartView);
 
     qDebug() << "温度Widget:"
-             << ui->historyTemperatureChartWidget->size();
+             << m_ui->historyTemperatureChartWidget->size();
 
     qDebug() << "电压Widget:"
-             << ui->historyVoltageChartWidget->size();
+             << m_ui->historyVoltageChartWidget->size();
 
     qDebug() << "温度Chart:"
              << m_historyTemperatureChartView->size();

@@ -1,0 +1,36 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '15px'}}}%%
+flowchart TD
+    A([开始]) --> B[用户选择数据源和协议]
+    B --> C[填写名称、通信参数和阈值]
+    C --> D{完整参数/阈值校验通过?}
+    D -- 否 --> E[显示具体字段错误]
+    E --> C
+    D -- 是 --> F[构建设备配置]
+    F --> G{配置写入数据库成功?}
+    G -- 否 --> H[回滚未完成写入并显示存储错误]
+    H --> Q([结束])
+    G -- 是 --> I[注册设备并初始化通信资源]
+    I --> J{设备注册成功?}
+    J -- 否 --> R[删除已写入配置并报告初始化失败]
+    R --> Q
+    J -- 是 --> K[通过设备新增结果更新主界面]
+    K --> L{用户是否启用采集?}
+    L -- 是 --> M[建立连接并纳入轮询]
+    L -- 否 --> N[保持待启用状态]
+    M --> P[显示设备和通信状态]
+    N --> P
+    P --> Q
+
+    %% 节点形状与配色分区
+    classDef startEnd fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef input fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px;
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#92400e;
+    classDef success fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef fail fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#991b1b;
+    classDef normal fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px;
+
+    class A,Q startEnd;
+    class B,C input;
+    class D,G,J,L decision;
+    class F,I,K,M,N,P normal;
+    class E,H,R fail;

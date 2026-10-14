@@ -1,0 +1,52 @@
+sequenceDiagram
+    actor User
+    participant MainWindow
+    participant ApplicationService as 应用服务
+    participant DeviceManager
+    participant DatabaseManager
+    participant Device
+    participant Communication
+
+    User->>MainWindow: 打开新增设备并填写参数
+    MainWindow->>ApplicationService: addDevice(config)
+    ApplicationService->>ApplicationService: 校验必填项和参数范围
+    alt 参数无效
+        ApplicationService-->>MainWindow: 字段错误
+        MainWindow-->>User: 显示字段错误
+    else 参数有效
+        ApplicationService->>DatabaseManager: insertDevice(config)
+        alt 数据库写入失败
+            DatabaseManager-->>ApplicationService: 失败原因
+            ApplicationService-->>MainWindow: 新增失败
+            MainWindow-->>User: 显示错误，不创建设备行
+        else 写入成功
+            DatabaseManager-->>ApplicationService: deviceId
+            ApplicationService->>Device: 创建运行时设备对象并写入配置
+            ApplicationService->>DeviceManager: addDevice(device)
+            alt 设备注册失败
+                DeviceManager-->>ApplicationService: false
+                ApplicationService->>DatabaseManager: deleteDevice(deviceId)，回滚配置
+                DatabaseManager-->>ApplicationService: 回滚结果
+                alt 回滚成功
+                    ApplicationService-->>MainWindow: 新增失败，配置已回滚
+                    MainWindow-->>User: 提示设备初始化失败，配置已回滚
+                else 回滚失败
+                    ApplicationService-->>MainWindow: 新增失败，配置清理失败
+                    MainWindow-->>User: 提示初始化失败和配置清理失败
+                end
+            else 设备注册成功
+                DeviceManager->>MainWindow: 发出 deviceAdded(deviceId) 信号
+                MainWindow->>MainWindow: 创建设备行
+                DeviceManager-->>ApplicationService: true
+                ApplicationService-->>MainWindow: 新增成功
+                MainWindow->>User: 显示新设备行
+                opt 用户启动采集
+                    MainWindow->>ApplicationService: 启动设备采集
+                    ApplicationService->>DeviceManager: 启动设备采集
+                    DeviceManager->>Communication: 按协议初始化连接
+                    Communication-->>DeviceManager: 连接状态
+                    DeviceManager->>MainWindow: 发出状态更新信号
+                end
+            end
+        end
+    end

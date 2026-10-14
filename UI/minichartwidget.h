@@ -34,11 +34,11 @@ private:
 private:
     ChartType m_type;
 
-    QChartView *m_chartView;
-    QLineSeries *m_series;
+    QChartView *m_chartView = nullptr;
+    QLineSeries *m_series = nullptr;
 
-    QValueAxis *m_axisX;
-    QValueAxis *m_axisY;
+    QValueAxis *m_axisX = nullptr;
+    QValueAxis *m_axisY = nullptr;
 };
 
 #endif // MINICHARTWIDGET_H

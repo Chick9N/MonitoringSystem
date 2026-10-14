@@ -10,11 +10,11 @@
 
 MockSerialConfigWindow::MockSerialConfigWindow(QWidget *parent)
     : QWidget(parent)
-    , ui(new Ui::MockSerialConfigWindow)
+    , m_ui(new Ui::MockSerialConfigWindow)
     , m_mockDevice(new MockSerialDevice(this))
     , m_modbusDevice(new MockModbusRTUDevice(this))
 {
-    ui->setupUi(this);
+    m_ui->setupUi(this);
 
     setWindowFlag(Qt::Window);
 
@@ -22,7 +22,7 @@ MockSerialConfigWindow::MockSerialConfigWindow(QWidget *parent)
 
 
     // 初始化波特率
-    ui->baudRateComboBox->addItems({
+    m_ui->baudRateComboBox->addItems({
         "9600",
         "19200",
         "38400",
@@ -30,14 +30,14 @@ MockSerialConfigWindow::MockSerialConfigWindow(QWidget *parent)
         "115200"
     });
 
-    ui->baudRateComboBox->setCurrentText("9600");
+    m_ui->baudRateComboBox->setCurrentText("9600");
 
     // 初始化串口列表
     refreshSerialPorts();
 
     // 初始状态
-    ui->openSerialButton->setEnabled(true);
-    ui->closeSerialButton->setEnabled(false);
+    m_ui->openSerialButton->setEnabled(true);
+    m_ui->closeSerialButton->setEnabled(false);
 
     updateSerialStatus();
 
@@ -90,7 +90,7 @@ MockSerialConfigWindow::~MockSerialConfigWindow()
         m_modbusDevice->stop();
     }
 
-    delete ui;
+    delete m_ui;
 }
 
 void MockSerialConfigWindow::showEvent(QShowEvent *event)
@@ -102,26 +102,26 @@ void MockSerialConfigWindow::showEvent(QShowEvent *event)
 
 void MockSerialConfigWindow::refreshSerialPorts()
 {
-    const QString selectedPort = ui->serialPortComboBox->currentText();
-    ui->serialPortComboBox->clear();
+    const QString selectedPort = m_ui->serialPortComboBox->currentText();
+    m_ui->serialPortComboBox->clear();
 
     const auto ports =
         QSerialPortInfo::availablePorts();
 
     for (const QSerialPortInfo &info : ports)
     {
-        const int index = ui->serialPortComboBox->count();
-        ui->serialPortComboBox->addItem(info.portName());
-        ui->serialPortComboBox->setItemData(index, info.description(), Qt::ToolTipRole);
+        const int index = m_ui->serialPortComboBox->count();
+        m_ui->serialPortComboBox->addItem(info.portName());
+        m_ui->serialPortComboBox->setItemData(index, info.description(), Qt::ToolTipRole);
     }
 
-    const int selectedIndex = ui->serialPortComboBox->findText(selectedPort);
+    const int selectedIndex = m_ui->serialPortComboBox->findText(selectedPort);
     if (selectedIndex >= 0)
-        ui->serialPortComboBox->setCurrentIndex(selectedIndex);
+        m_ui->serialPortComboBox->setCurrentIndex(selectedIndex);
 
     if (ports.isEmpty())
     {
-        ui->serialStatusLabel->setText("未检测到可用串口");
+        m_ui->serialStatusLabel->setText("未检测到可用串口");
     }
     updateSerialStatus();
 }
@@ -134,22 +134,22 @@ void MockSerialConfigWindow::updateSerialStatus()
 
     if (isOpen) {
         const QString mode = modbusRunning ? "Modbus RTU模拟器" : "自定义协议模拟器";
-        ui->serialStatusLabel->setText(
+        m_ui->serialStatusLabel->setText(
             QString("%1：%2 已打开（%3 波特）")
                 .arg(mode,
                      modbusRunning ? m_modbusDevice->portName() : m_mockDevice->portName())
                 .arg(modbusRunning ? m_modbusDevice->baudRate() : m_mockDevice->baudRate()));
     } else {
-        ui->serialStatusLabel->setText("模拟器串口：未打开");
+        m_ui->serialStatusLabel->setText("模拟器串口：未打开");
     }
 
-    ui->openSerialButton->setEnabled(!isOpen);
-    ui->closeSerialButton->setEnabled(isOpen);
+    m_ui->openSerialButton->setEnabled(!isOpen);
+    m_ui->closeSerialButton->setEnabled(isOpen);
 
-    ui->serialPortComboBox->setEnabled(!isOpen);
-    ui->baudRateComboBox->setEnabled(!isOpen);
-    ui->refreshSerialButton->setEnabled(!isOpen);
-    ui->modbusModeCheckBox->setEnabled(!isOpen);
+    m_ui->serialPortComboBox->setEnabled(!isOpen);
+    m_ui->baudRateComboBox->setEnabled(!isOpen);
+    m_ui->refreshSerialButton->setEnabled(!isOpen);
+    m_ui->modbusModeCheckBox->setEnabled(!isOpen);
 }
 
 void MockSerialConfigWindow::on_refreshSerialButton_clicked()
@@ -160,7 +160,7 @@ void MockSerialConfigWindow::on_refreshSerialButton_clicked()
 void MockSerialConfigWindow::on_openSerialButton_clicked()
 {
     const QString portName =
-        ui->serialPortComboBox->currentText();
+        m_ui->serialPortComboBox->currentText();
 
     if (portName.isEmpty())
     {
@@ -174,7 +174,7 @@ void MockSerialConfigWindow::on_openSerialButton_clicked()
     }
 
     const qint32 baudRate =
-        ui->baudRateComboBox->currentText().toInt();
+        m_ui->baudRateComboBox->currentText().toInt();
 
     // ==============================
     // Modbus RTU 模式

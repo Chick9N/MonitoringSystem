@@ -11,18 +11,19 @@ class Device : public QObject
 {
     Q_OBJECT
 public:
-    explicit Device(int id,QObject *parent = nullptr);
+    explicit Device(int id, QObject *parent = nullptr);
     int id() const;
-    const DeviceData& data() const;
+    const DeviceData &data() const;
 
     void updateData();
     void setData(const DeviceData &data);
 
     void start();
     void stop();
+    bool isRunning() const;
 
     void setConfig(const DeviceConfig &config);
-    const DeviceConfig& config() const;
+    const DeviceConfig &config() const;
 
 signals:
     void dataUpdated(const DeviceData &data);

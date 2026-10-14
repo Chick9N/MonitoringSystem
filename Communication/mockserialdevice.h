@@ -55,9 +55,9 @@ private:
 
 private:
 
-    QSerialPort *m_serialPort;
+    QSerialPort *m_serialPort = nullptr;
 
-    QTimer *m_dataTimer;
+    QTimer *m_dataTimer = nullptr;
 
     QByteArray m_buffer;
 

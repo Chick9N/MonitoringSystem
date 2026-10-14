@@ -1,8 +1,11 @@
 #include "UI/mainwindow.h"
+#include "UI/systemtestdialog.h"
 
 #include <QApplication>
 #include <QFont>
 #include <QIcon>
+#include <QTimer>
+#include <QDebug>
 #include "Utils/applogger.h"
 
 int main(int argc, char *argv[])
@@ -21,6 +24,8 @@ int main(int argc, char *argv[])
         QPushButton:disabled { color: #94A3B8; background: #F1F5F9; }
         #addDeviceBtn, #startAllBtn, #tcpServerBtn { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
         #addDeviceBtn:hover, #startAllBtn:hover, #tcpServerBtn:hover { background: #1D4ED8; border-color: #1D4ED8; color: #FFFFFF; }
+        #runSelfTestBtn { background: #0F766E; border-color: #0F766E; color: #FFFFFF; }
+        #runSelfTestBtn:hover { background: #115E59; border-color: #115E59; color: #FFFFFF; }
         #stopAllBtn { background: #FFF7F7; border-color: #FECACA; color: #B91C1C; }
         #stopAllBtn:hover { background: #FEE2E2; border-color: #F87171; }
         QTableWidget, QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { background: #FFFFFF; border: 1px solid #D8E0EA; border-radius: 6px; selection-background-color: #BFDBFE; }
@@ -50,6 +55,21 @@ int main(int argc, char *argv[])
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
     )"));
     AppLogger::install();
+
+    // 提供无主界面、无数据库副作用的命令行自检入口，方便面试演示与CI验证。
+    if (a.arguments().contains(QStringLiteral("--self-test"))) {
+        SystemTestDialog selfTest;
+        QObject::connect(&selfTest, &SystemTestDialog::testsFinished,
+                         &a, [&a](int passed, int failed) {
+            qInfo() << "系统自检完成：通过" << passed << "失败" << failed;
+            a.exit(failed == 0 ? 0 : 1);
+        });
+        QTimer::singleShot(0, &selfTest, [&selfTest]() {
+            QMetaObject::invokeMethod(&selfTest, "runAllTests", Qt::DirectConnection);
+        });
+        return a.exec();
+    }
+
     MainWindow w;
     w.show();
     return a.exec();

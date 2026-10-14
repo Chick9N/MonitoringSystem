@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant MainWindow
+    participant DeviceManager
+    participant Communication
+    participant DeviceConfig
+    participant RuntimeDevice as Device运行对象
+    participant FieldDevice as 现场设备
+    participant DatabaseWriteQueue
+    participant SQLite
+
+    MainWindow->>DeviceManager: 配置恢复完成并启动轮询
+    DeviceManager->>DeviceConfig: 获取设备 ID 和通信参数
+    DeviceConfig-->>DeviceManager: 配置快照
+    DeviceManager->>Communication: requestRead(deviceId, protocolParams)
+    Communication->>FieldDevice: 发送串口/TCP 请求帧
+    alt 收到完整有效响应
+        FieldDevice-->>Communication: 响应字节流
+        Communication->>Communication: 提帧、校验和协议解析
+        Communication-->>DeviceManager: 标准化 DeviceData
+        DeviceManager->>RuntimeDevice: 更新测量值、在线状态和有效响应时间
+        DeviceManager->>MainWindow: 发出 deviceDataUpdated 信号
+        DeviceManager->>DatabaseWriteQueue: 异步提交采样记录
+        DatabaseWriteQueue->>SQLite: 写入设备历史
+        SQLite-->>DatabaseWriteQueue: 写入结果
+    else 响应超时
+        Communication-->>DeviceManager: timeout
+        DeviceManager->>RuntimeDevice: 标记离线并保留最近有效测量值
+        DeviceManager->>MainWindow: 发出离线状态和通信错误信号
+    else 协议或帧校验失败
+        Communication-->>DeviceManager: protocolError
+        DeviceManager->>RuntimeDevice: 保留最近有效值，不刷新有效响应时间
+        DeviceManager->>MainWindow: 发出协议诊断，不生成新采样
+    end
+    Note over MainWindow,DatabaseWriteQueue: 当前采样写入由 MainWindow 提交；写入失败只记录日志。

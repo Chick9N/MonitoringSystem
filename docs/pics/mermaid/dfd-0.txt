@@ -1,0 +1,14 @@
+flowchart LR
+    User["用户"]
+    Device["现场设备"]
+    SYS(["0 设备监控上位机系统"])
+
+    User -->|设备配置、采集控制、模拟设备启停、报警确认、历史查询条件| SYS
+    SYS -->|操作结果、实时状态与报警、历史查询结果| User
+    SYS -->|采集请求| Device
+    Device -->|响应数据、通信状态| SYS
+
+    classDef ext fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px;
+    classDef proc fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    class User,Device ext;
+    class SYS proc;

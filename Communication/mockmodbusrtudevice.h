@@ -47,8 +47,8 @@ private:
     void sendResponse(const QByteArray &response);
 
 private:
-    QSerialPort *m_serialPort;
-    QTimer *m_dataTimer;
+    QSerialPort *m_serialPort = nullptr;
+    QTimer *m_dataTimer = nullptr;
 
     QByteArray m_buffer;
 

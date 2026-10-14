@@ -11,12 +11,12 @@
 DeviceManager::DeviceManager(DeviceRepository *deviceRepository,
 QObject *parent)
     : QObject(parent)
+    , m_deviceRepository(deviceRepository)
     , m_alarmManager(new AlarmManager(this))
     , m_serialPort(new SerialPort(this))
     , m_modbusThread(new QThread(this))
-    , m_tcpTimeoutTimer(new QTimer(this))
     , m_modbusTCP(new ModbusTCP())
-    , m_deviceRepository(deviceRepository)
+    , m_tcpTimeoutTimer(new QTimer(this))
 // 这里不能给 ModbusTCP 设置 DeviceManager 为 parent，
 // 否则 QObject 不允许将有父对象的实例移动到其他线程。
 {
@@ -372,20 +372,18 @@ bool DeviceManager::addDevice(Device *device)
 
     emit deviceAdded(device->id());
 
-    // 先创建 UI 行，再发布连接状态。网络/串口设备刚加入时尚未收到
-    // 有效响应，不能沿用 Device 构造时的“在线”默认值。
-    if (config.dataSource == DataSource::TCP || config.dataSource == DataSource::Serial) {
-        DeviceData initialData = device->data();
-        initialData.isOnline = false;
-        device->setData(initialData);
-    }
+    // 新注册的设备都从离线/未启动状态开始；模拟设备启动后再发布在线状态，
+    // 网络和串口设备则需等待首个有效响应。
+    DeviceData initialData = device->data();
+    initialData.isOnline = false;
+    device->setData(initialData);
 
     return true;
 }
 
 void DeviceManager::removeDevice(int deviceId)
 {
-    Device* device = getDevice(deviceId);
+    Device *device = getDevice(deviceId);
 
     if (!device) {
         return;
@@ -449,16 +447,19 @@ void DeviceManager::removeDevice(int deviceId)
     qDebug() << "设备已删除:" << deviceId;
 }
 
-Device* DeviceManager::getDevice(int deviceId){
-    if(deviceId == -1) return nullptr;
-    for(Device* device:m_devices){
+Device *DeviceManager::getDevice(int deviceId)
+{
+    if (deviceId == -1)
+        return nullptr;
+    for (Device *device : m_devices) {
         if(device->id() == deviceId)
             return device;
     }
     return nullptr;
 }
 
-QList<Device*> DeviceManager::devices() const{
+QList<Device *> DeviceManager::devices() const
+{
     return m_devices;
 }
 
@@ -512,8 +513,9 @@ void DeviceManager::markDeviceOffline(int deviceId, const QString &reason)
 
 void DeviceManager::updateAllDevices()
 {
-    for (Device* device : m_devices) {
-        if (device->config().dataSource != DataSource::Simulation)
+    for (Device *device : m_devices) {
+        if (device->config().dataSource != DataSource::Simulation ||
+            !device->isRunning())
             continue;
 
         device->updateData();
@@ -532,16 +534,20 @@ void DeviceManager::startPolling()
         m_modbusPollTimer->start(1000);
 }
 
-void DeviceManager::startAll(){
-    for(Device* device:m_devices){
-        device->start();
+void DeviceManager::startSimulationDevices()
+{
+    for (Device *device : m_devices) {
+        if (device && device->config().dataSource == DataSource::Simulation)
+            device->start();
     }
 }
 
 
-void DeviceManager::stopAll(){
-    for(Device* device:m_devices){
-        device->stop();
+void DeviceManager::stopSimulationDevices()
+{
+    for (Device *device : m_devices) {
+        if (device && device->config().dataSource == DataSource::Simulation)
+            device->stop();
     }
 }
 
@@ -694,7 +700,7 @@ void DeviceManager::checkDeviceTimeout()
             m_lastReceivedTime.value(deviceId)
                 .msecsTo(now);
 
-        if (elapsed > CommunicationTimeoutMs)
+        if (elapsed > m_communicationTimeoutMs)
         {
             DeviceData data = device->data();
             data.isOnline = false;
@@ -748,7 +754,7 @@ bool DeviceManager::requestModbusRead(
     }
 
     // 启动请求超时计时
-    m_modbusTimeoutTimer->start(ModbusTimeoutMs);
+    m_modbusTimeoutTimer->start(m_modbusTimeoutMs);
 
     qDebug() << "发送 Modbus RTU 请求:"
              << request.toHex(' ');

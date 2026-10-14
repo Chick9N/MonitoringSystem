@@ -98,6 +98,11 @@ bool MockModbusTCPServer::isRunning() const
     return m_server->isListening();
 }
 
+quint16 MockModbusTCPServer::serverPort() const
+{
+    return m_server->serverPort();
+}
+
 QString MockModbusTCPServer::errorString() const
 {
     return m_lastError;

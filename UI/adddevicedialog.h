@@ -41,7 +41,8 @@ signals:
 protected:
     void accept() override;
 private:
-    Ui::AddDeviceDialog *ui;
+    // Designer-generated controls are owned by this dialog.
+    Ui::AddDeviceDialog *m_ui = nullptr;
 };
 
 #endif // ADDDEVICEDIALOG_H

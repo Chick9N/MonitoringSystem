@@ -1,0 +1,38 @@
+sequenceDiagram
+    participant User
+    participant MainWindow
+    participant DeviceManager
+    participant AlarmManager
+    participant DatabaseWriteQueue
+    participant SQLite
+
+    DeviceManager->>AlarmManager: checkDeviceData(id, data, config)
+    AlarmManager->>AlarmManager: 逐类型检查阈值和活动状态
+    alt 新的活动报警
+        AlarmManager->>DeviceManager: 发出 alarmTriggered(AlarmInfo) 信号
+        DeviceManager->>MainWindow: 转发报警信号
+        MainWindow->>User: 显示报警并按确认状态提示
+        DeviceManager->>DatabaseWriteQueue: 异步提交活动报警事件
+        DatabaseWriteQueue->>SQLite: 插入报警记录
+        SQLite-->>DatabaseWriteQueue: 写入结果
+    else 相同类型报警仍活动
+        AlarmManager->>AlarmManager: 保持活动状态，不重复生成事件
+    else 报警条件恢复且该类型报警活动
+        AlarmManager->>AlarmManager: 清除活动状态并生成恢复记录
+        AlarmManager->>DeviceManager: 发出 recovered=true 的报警信号
+        DeviceManager->>MainWindow: 转发恢复信号
+        MainWindow->>User: 更新状态并从活动列表移除
+        DeviceManager->>DatabaseWriteQueue: 异步提交恢复事件
+        DatabaseWriteQueue->>SQLite: 插入恢复记录
+        SQLite-->>DatabaseWriteQueue: 写入结果
+    else 当前正常且没有活动报警
+        AlarmManager->>AlarmManager: 保持无活动状态，不生成事件
+    end
+
+    opt 用户确认活动报警
+        User->>MainWindow: 确认报警
+        MainWindow->>DatabaseWriteQueue: 异步提交确认状态更新
+        DatabaseWriteQueue->>SQLite: 更新最新未恢复记录
+        SQLite-->>DatabaseWriteQueue: 写入结果
+    end
+    Note over MainWindow,DatabaseWriteQueue: 当前界面先显示已确认，再异步写库；写入失败只记录日志。

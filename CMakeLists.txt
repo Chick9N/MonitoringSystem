@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(MonitoringSystem VERSION 0.1 LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -30,6 +32,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         Communication/serialport.h Communication/serialport.cpp
 
         UI/mainwindow.h UI/mainwindow.cpp UI/mainwindow.ui
+        UI/systemtestdialog.h UI/systemtestdialog.cpp
         Core/device.h Core/device.cpp
         Core/devicedata.h
         Data/databasemanager.h Data/databasemanager.cpp
@@ -110,4 +113,13 @@ install(TARGETS MonitoringSystem
 
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(MonitoringSystem)
+endif()
+
+if(BUILD_TESTING)
+    add_test(NAME monitoring_system_self_test
+             COMMAND MonitoringSystem --self-test)
+    set_tests_properties(monitoring_system_self_test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        TIMEOUT 20
+    )
 endif()

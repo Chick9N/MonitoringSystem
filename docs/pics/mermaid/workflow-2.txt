@@ -1,0 +1,45 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart TD
+    A([用户启用设备采集]) --> B{数据源类型}
+    B -- 内置模拟 --> C[启动内部模拟数据生成]
+    C --> C2([转入 2.6.6 模拟数据更新流程])
+    B -- 串口自定义/RTU --> D[检查并打开共享串口]
+    B -- Modbus TCP --> E[连接配置的 IP 和端口]
+    D --> F{端口打开成功?}
+    F -- 否 --> X[记录端口错误并保持未连接/离线]
+    F -- 是 --> G[登记串口参数与从站地址]
+    E --> H{TCP 连接成功?}
+    H -- 否 --> I[按连接策略重试并显示连接中/失败]
+    H -- 是 --> J[登记端点与 Unit ID，设备仍待有效响应确认]
+    G --> K[开始请求/轮询]
+    J --> K
+    I --> L{用户停止或应用退出?}
+    L -- 否 --> E
+    L -- 是 --> M[停止重连、取消挂起请求并释放资源]
+    M --> Z([结束])
+    X --> N([等待配置修正或用户重新发起连接])
+    K --> O[等待有效完整响应或响应超时 T]
+    O --> P{是否收到有效完整响应?}
+    P -- 是 --> Q[更新为在线并记录最近有效响应时间]
+    P -- 否 --> R[标记离线并记录通信超时]
+    Q --> S{用户停止或应用退出?}
+    R --> S
+    S -- 否 --> O
+    S -- 是 --> M
+
+    %% 节点形状与配色分区
+    classDef startEnd fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#92400e;
+    classDef success fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef fail fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px,color:#991b1b;
+    classDef normal fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px;
+    classDef sim fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#5b21b6;
+    classDef jump fill:#fce7f3,stroke:#db2777,stroke-width:1.5px,color:#9d174d;
+
+    class A,Z startEnd;
+    class B,F,H,L,P,S decision;
+    class D,E,G,I,J,K,O,Q,R normal;
+    class C sim;
+    class C2 jump;
+    class M fail;
+    class X,N fail;

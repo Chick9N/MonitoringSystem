@@ -1,0 +1,36 @@
+flowchart TB
+    P2["2 采集调度与协议通信"]
+    P3["3 内置模拟数据生成"]
+    D1[("D1 设备配置")]
+    D2[("D2 设备采样历史")]
+    D3[("D3 报警历史")]
+    P5["5 实时展示与报警确认"]
+
+    subgraph L2P4["4 数据校验、状态与报警处理"]
+        direction TB
+
+        P41(["4.1 校验并标准化数据"])
+        P42(["4.2 更新设备通信状态"])
+        P43(["4.3 检测报警与恢复"])
+
+        P41 -->|有效采样数据| P42
+        P41 -->|温度、电压数据| P43
+        P42 -->|在线 / 离线状态| P43
+    end
+
+    P2 -->|通过协议校验的数据| P41
+    P2 -->|连接状态、超时信息| P42
+    P3 -->|模拟采样数据| P41
+    D1 -->|温度和电压阈值| P43
+
+    P41 -->|有效采样记录| D2
+    P43 -->|报警触发和恢复事件| D3
+    P41 -->|实时数据| P5
+    P42 -->|在线 / 离线状态| P5
+    P43 -->|报警状态与提示| P5
+
+    classDef ext fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px;
+    classDef proc fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef store fill:#fef3c7,stroke:#d97706,stroke-width:1.5px;
+    class P41,P42,P43,P2,P3,P5 proc;
+    class D1,D2,D3 store;

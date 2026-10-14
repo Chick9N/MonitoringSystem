@@ -24,21 +24,20 @@ private slots:
     void on_refreshSerialButton_clicked();
     void on_openSerialButton_clicked();
     void on_closeSerialButton_clicked();
-
     void on_modbusModeCheckBox_stateChanged(int arg1);
+
+protected:
+    void showEvent(QShowEvent *event) override;
 
 private:
     void refreshSerialPorts();
     void updateSerialStatus();
 
-private:
-    Ui::MockSerialConfigWindow *ui;
-    MockSerialDevice *m_mockDevice;
-    MockModbusRTUDevice *m_modbusDevice;
+    // Keep both simulators alive while the window is hidden.
+    Ui::MockSerialConfigWindow *m_ui = nullptr;
+    MockSerialDevice *m_mockDevice = nullptr;
+    MockModbusRTUDevice *m_modbusDevice = nullptr;
     bool m_modbusMode = false;
-
-protected:
-    void showEvent(QShowEvent *event) override;
 };
 
 #endif // MOCKSERIALCONFIGWINDOW_H

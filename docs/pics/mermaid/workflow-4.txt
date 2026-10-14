@@ -1,0 +1,43 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart TD
+    A([收到新状态/采样]) --> B{数据有效?}
+    B -- 否 --> C[记录诊断，不判阈值]
+    B -- 是 --> D{越限或设备离线?}
+
+    D -- 否 --> E{存在活动报警?}
+    E -- 否 --> Z([结束])
+    E -- 是 --> F[生成恢复事件]
+    F --> F2{恢复写入成功?}
+    F2 -- 是 --> Z
+    F2 -- 否 --> ERR[记录存储错误并提示]
+
+    D -- 是 --> G{同类型报警已活动?}
+    G -- 是 --> H[保持原活动事件]
+    H --> Z
+    G -- 否 --> I[创建活动报警]
+    I --> I2{活动写入成功?}
+    I2 -- 否 --> ERR
+    I2 -- 是 --> J[显示报警并闪烁]
+
+    J --> K{用户确认?}
+    K -- 否 --> M[保持未确认并提示]
+    M --> Z
+    K -- 是 --> L{确认写入成功?}
+    L -- 是 --> Q[显示已确认并停止闪烁]
+    L -- 否 --> R[提示保存失败，保持未确认]
+    Q --> Z
+    R --> Z
+    C --> Z
+    ERR --> Z
+
+    classDef startEnd fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px;
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:1.5px;
+    classDef success fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef fail fill:#fee2e2,stroke:#dc2626,stroke-width:1.5px;
+    classDef normal fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px;
+
+    class A,Z startEnd;
+    class B,D,E,F2,G,I2,K,L decision;
+    class Q success;
+    class C,ERR,R fail;
+    class F,H,I,J,M normal;

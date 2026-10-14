@@ -1,0 +1,67 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart TB
+    User[用户]
+
+    subgraph SYS[设备监控上位机系统]
+        direction TB
+
+        subgraph UI[用户界面层]
+            UI1[设备配置与采集控制]
+            UI2[实时监控与报警交互]
+            UI3[历史查询与系统自检]
+        end
+
+        subgraph APP[应用业务层]
+            APP1[设备生命周期管理]
+            APP2[采集任务协调与数据处理]
+            APP3[状态与报警管理]
+            APP4[历史查询与结果组织]
+        end
+
+        subgraph DEV[设备管理层]
+            DEV1[设备配置与运行状态]
+            DEV2[采集调度与数据分发]
+            DEV3[现场设备与模拟数据源管理]
+        end
+
+        subgraph COM[通信接入层]
+            COM1[串口与 Modbus RTU 接入]
+            COM2[Modbus TCP 客户端接入]
+            COM3[内部模拟数据与 TCP 测试服务]
+        end
+
+        subgraph DATA[数据支撑层]
+            DATA1[设备配置存储]
+            DATA2[采样与报警历史]
+            DATA3[日志记录]
+        end
+    end
+
+    EXT[现场仪表与控制设备]
+
+    User --> UI
+    UI <-->|用户操作与界面结果| APP
+    APP <-->|设备控制与采集结果| DEV
+    DEV <-->|通信请求与设备数据| COM
+    COM <-->|现场通信| EXT
+    DEV <-->|设备配置读写| DATA
+    APP <-->|历史读写与查询结果| DATA
+
+    %% 分层配色
+    classDef user fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef ui fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#1e3a8a;
+    classDef app fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d;
+    classDef dev fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#92400e;
+    classDef com fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#5b21b6;
+    classDef data fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155;
+    classDef ext fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#991b1b;
+    classDef sys fill:none,stroke:#94a3b8,stroke-width:1.5px,stroke-dasharray:5 5;
+
+    class User user;
+    class UI1,UI2,UI3 ui;
+    class APP1,APP2,APP3,APP4 app;
+    class DEV1,DEV2,DEV3 dev;
+    class COM1,COM2,COM3 com;
+    class DATA1,DATA2,DATA3 data;
+    class EXT ext;
+    class SYS sys;

@@ -1,0 +1,59 @@
+---
+config
+  usecase
+    actorFontSize 18
+    usecaseFontSize 16
+  themeCSS 
+    .edgeLabel,
+    .relationship-label {
+      font-size 16px !important;
+    }
+    .system-boundary-title text,
+    .system-boundary-title span {
+      font-size 20px !important;
+      font-weight bold !important;
+    }
+---
+usecase-beta
+direction LR
+
+actor systemUser(系统用户)
+actor operator(操作人员)
+actor maintainer(维护人员)
+actor tester(开发测试人员)
+actor device(现场模拟设备)
+
+operator -- systemUser
+maintainer -- systemUser
+tester -- systemUser
+
+systemBoundary monitorSystem[设备监控上位机系统]
+    UC6(设置通信参数和报警阈值)
+    UC1(查看设备状态与实时数据)
+    UC2(查看趋势与历史数据)
+    UC3(查看和确认报警)
+    UC4(添加设备)
+    UC5(删除设备)
+    UC7(启动停止采集)
+    UC8(执行一键自检)
+    UC9(响应采集请求并提供数据)
+    UC10(启动停止内置模拟设备)
+end
+
+systemUser -- UC1
+systemUser -- UC2
+
+operator -- UC3
+
+maintainer -- UC4
+maintainer -- UC5
+maintainer -- UC6
+maintainer -- UC7
+
+tester -- UC8
+tester -- UC10
+
+device -- UC9
+
+UC4 -- 添加设备时必须配置参数 -- UC6
+UC7 -- 采集期间请求设备并接收数据 -- UC9

@@ -1,0 +1,55 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    User["用户"]
+    Device["现场设备"]
+
+    subgraph SYS["0 设备监控上位机系统"]
+        direction TB
+
+        P1(["1 设备管理与采集控制"])
+        P2(["2 采集调度与协议通信"])
+        P3(["3 内置模拟数据生成"])
+        P4(["4 数据校验、状态与报警处理"])
+        P5(["5 实时展示与报警确认"])
+        P6(["6 历史查询"])
+
+        D1[("D1 设备配置")]
+        D2[("D2 设备采样历史")]
+        D3[("D3 报警历史")]
+
+        User -->|设备增删与参数配置、采集控制、模拟设备启停| P1
+        P1 -->|设备配置| D1
+        P1 -->|采集控制与轮询计划| P2
+        P1 -->|模拟设备启停| P3
+        P1 -->|操作结果| User
+
+        D1 -->|通信参数、设备信息| P2
+        P2 -->|采集请求| Device
+        Device -->|响应数据、通信状态| P2
+        P2 -->|协议数据、连接状态、超时信息| P4
+
+        D1 -->|模拟设备配置| P3
+        P3 -->|模拟采样数据| P4
+        D1 -->|温度和电压阈值| P4
+
+        P4 -->|有效采样记录| D2
+        P4 -->|报警触发和恢复事件| D3
+        P4 -->|实时数据、设备状态、报警状态| P5
+        User -->|报警确认| P5
+        P5 -->|报警确认状态更新| D3
+        P5 -->|实时状态、报警提示和确认结果| User
+
+        User -->|设备和时间范围| P6
+        P6 -->|采样查询条件| D2
+        D2 -->|采样记录| P6
+        P6 -->|报警查询条件| D3
+        D3 -->|报警记录| P6
+        P6 -->|历史曲线和报警列表| User
+    end
+
+    classDef ext fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px;
+    classDef proc fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef store fill:#fef3c7,stroke:#d97706,stroke-width:1.5px;
+    class User,Device ext;
+    class P1,P2,P3,P4,P5,P6 proc;
+    class D1,D2,D3 store;

@@ -45,7 +45,7 @@ private slots:
     void readData();
 
 private:
-    QSerialPort *m_serialPort;
+    QSerialPort *m_serialPort = nullptr;
     QByteArray m_buffer; // 缓冲区
 
     bool m_modbusMode=false;

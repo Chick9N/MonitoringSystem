@@ -23,16 +23,16 @@ public:
     ~DeviceManager();
     bool addDevice(Device *device);
     void removeDevice(int deviceId);
-    Device* getDevice(int deviceId);
-    QList<Device*> devices() const;
+    Device *getDevice(int deviceId);
+    QList<Device *> devices() const;
     void restoreActiveAlarms(const QList<AlarmInfo> &alarms);
     void updateDeviceData(
         int deviceId,
         const DeviceData &data
         );
 
-    void startAll();
-    void stopAll();
+    void startSimulationDevices();
+    void stopSimulationDevices();
 
     // 串口相关接口
     bool openSerialPort(
@@ -100,87 +100,56 @@ signals:
         QString message);
     void tcpConnectionChanged(bool connected, const QString &message);
 private:
-    QList<Device*> m_devices; // 设备容器
-    AlarmManager *m_alarmManager;
-    SerialPort *m_serialPort;
+    // 设备注册表与借用的仓储接口；主线程服务由本对象管理，TCP 对象会移动到独立线程。
+    QList<Device *> m_devices;
+    DeviceRepository *m_deviceRepository = nullptr;
+    AlarmManager *m_alarmManager = nullptr;
+    SerialPort *m_serialPort = nullptr;
 
-    QMap<int, QDateTime> m_lastReceivedTime;
-    QTimer *m_timeoutTimer = nullptr;
-
-    static constexpr int CommunicationTimeoutMs = 5000;
-
+    // 共享串口总线配置，以及每台设备最近一次有效响应时间。
     ProtocolType m_protocolType = ProtocolType::Custom;
     DeviceConfig m_activeSerialConfig;
     bool m_hasActiveSerialConfig = false;
-
-    void handleModbusRTUResponse(
-        const QByteArray &data
-        );
-
-
-    void handleModbusTCPResponse(
-        const QByteArray &data
-        );
-    // 数据库
-    DeviceRepository *m_deviceRepository = nullptr;
-
-    // 自定义串口协议
+    QMap<int, QDateTime> m_lastReceivedTime;
+    QTimer *m_timeoutTimer = nullptr;
+    static constexpr int m_communicationTimeoutMs = 5000;
     bool openSerialForDevice(const DeviceConfig &config);
+    void checkDeviceTimeout();
 
-    // Modbus
-    // Modbus RTU 接收缓冲区
+    // RTU 请求上下文：共享串口总线上同一时刻只维护一个待处理请求。
     QByteArray m_modbusBuffer;
-
-    // 当前 RTU 请求对应的应用层设备 ID
     int m_expectedApplicationDeviceId = -1;
-
-    // 当前待处理请求的信息
     quint8 m_expectedDeviceId = 0;
     quint16 m_expectedQuantity = 0;
     bool m_modbusRequestPending = false;
-
-    // Modbus 请求超时定时器
     QTimer *m_modbusTimeoutTimer = nullptr;
+    static constexpr int m_modbusTimeoutMs = 3000;
+    void handleModbusRawData(const QByteArray &data);
+    void handleModbusRTUResponse(const QByteArray &data);
+    void processModbusRegisters(int applicationDeviceId, const QVector<quint16> &registers);
 
-    // Modbus 请求超时时间（毫秒）
-    static constexpr int ModbusTimeoutMs = 3000;
-
-    void processModbusRegisters(
-        int applicationDeviceId,
-        const QVector<quint16> &registers);
-
-    // TCP
-    bool m_tcpConnected = false;
+    // TCP 套接字运行在 m_modbusThread 中；这些字段用于关联当前请求与响应。
+    QThread *m_modbusThread = nullptr;
+    ModbusTCP *m_modbusTCP = nullptr;
     QString m_tcpEndpointIp;
     quint16 m_tcpEndpointPort = 0;
-    ModbusTCP *m_modbusTCP;
-
-    // Modbus TCP 请求状态
+    bool m_tcpConnected = false;
     bool m_tcpRequestPending = false;
     quint16 m_tcpExpectedTransactionId = 0;
     quint8 m_tcpExpectedUnitId = 0;
     quint16 m_tcpExpectedQuantity = 0;
-
-    // 当前 TCP 请求对应的应用层设备 ID
     int m_tcpExpectedApplicationDeviceId = -1;
-
-    // 超时
     QTimer *m_tcpTimeoutTimer = nullptr;
-    // 轮询
+    void handleModbusTCPResponse(const QByteArray &data);
+
+    // 刷新轮询列表时尽量保留当前位置，避免设备变更后跳过待轮询设备。
     QTimer *m_modbusPollTimer = nullptr;
     QList<int> m_pollDeviceIds;
     int m_currentPollIndex = 0;
     void refreshPollDeviceIds();
     void pollNextDevice();
-
-    void handleModbusRawData(const QByteArray &data);
     void markDeviceOffline(int deviceId, const QString &reason);
 
-    // 多线程
-    QThread *m_modbusThread = nullptr;
-
-private slots:
-    void checkDeviceTimeout();
 };
 
 #endif // DEVICEMANAGER_H

@@ -402,13 +402,31 @@ void ModbusTCP::restartConnection(const QString &ip, quint16 port)
     m_socket->abort();
 
     QTimer::singleShot(0, this, [this, ip, port]() {
+        // 若排队期间已主动断开或切换目标，丢弃过期的重连请求。
+        if (m_ip != ip || m_port != port)
+            return;
         connectToDevice(ip, port);
     });
 }
 
 void ModbusTCP::disconnectFromDevice()
 {
-    m_socket->disconnectFromHost();
+    // 主动断开后清空目标地址，避免断开信号触发自动重连。
+    m_reconnectTimer->stop();
+    m_ip.clear();
+    m_port = 0;
+    m_buffer.clear();
+
+    for (const PendingRequest &request : m_pendingRequests) {
+        if (!request.timer)
+            continue;
+        request.timer->stop();
+        request.timer->deleteLater();
+    }
+    m_pendingRequests.clear();
+
+    // abort 会立即终止连接或正在进行的连接尝试。
+    m_socket->abort();
 }
 
 void ModbusTCP::readData()
@@ -531,7 +549,7 @@ void ModbusTCP::onDisconnected()
     emit tcpDisconnected();
 
 
-    if(!m_reconnectTimer->isActive())
+    if (!m_ip.isEmpty() && !m_reconnectTimer->isActive())
     {
         m_reconnectTimer->start();
     }

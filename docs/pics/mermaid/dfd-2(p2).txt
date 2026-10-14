@@ -1,0 +1,36 @@
+flowchart TB
+    P1["1 设备管理与采集控制"]
+    D1[("D1 设备配置")]
+    Device["现场设备"]
+    P4["4 数据校验、状态与报警处理"]
+
+    subgraph L2P2["2 采集调度与协议通信"]
+        direction TB
+
+        P21(["2.1 读取通信参数与轮询设置"])
+        P22(["2.2 生成轮询任务"])
+        P23(["2.3 发送设备请求"])
+        P24(["2.4 接收并校验响应帧"])
+        P25(["2.5 判定连接状态与响应超时"])
+        P26(["2.6 整理采集结果"])
+
+        P21 -->|轮询任务| P22
+        P22 -->|请求内容| P23
+        P23 -->|发送状态、请求时间戳| P25
+        P24 -->|响应结果、接收时间戳| P25
+        P24 -->|通过协议校验的数据| P26
+        P25 -->|连接状态、超时信息| P26
+    end
+
+    P1 -->|采集控制与轮询计划| P21
+    D1 -->|通信参数、设备信息| P21
+    P23 -->|串口 / TCP 请求| Device
+    Device -->|响应字节流| P24
+    P26 -->|协议数据、连接状态、超时信息| P4
+
+    classDef ext fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px;
+    classDef proc fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px;
+    classDef store fill:#fef3c7,stroke:#d97706,stroke-width:1.5px;
+    class Device ext;
+    class P1,P4,P21,P22,P23,P24,P25,P26 proc;
+    class D1 store;
