@@ -3,7 +3,7 @@
 基于 Qt/C++ 的多设备采集、报警与历史追溯工具。
 
 [![Build](https://img.shields.io/badge/CI-not%20configured-lightgrey)](#开发与测试)
-[![License](https://img.shields.io/badge/License-not%20declared-lightgrey)](#许可证与致谢)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Qt](https://img.shields.io/badge/Qt-6.8.1-41CD52?logo=qt&logoColor=white)](#环境要求)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20MinGW%2064--bit-blue)](#环境要求)
 
@@ -187,6 +187,6 @@ if ($LASTEXITCODE -ne 0) { throw '自检失败' }
 
 ## 许可证与致谢
 
-仓库当前未包含 `LICENSE` 文件，项目许可证尚未声明。复用或分发前请先确认权利人授权，并在仓库补充明确的许可证文件。
+项目采用 MIT License，许可条款见 [LICENSE](LICENSE)。Qt、SQLite、CMake 等第三方组件的版权与许可声明以各自项目发布内容为准。
 
-感谢 Qt、SQLite、CMake 及其维护者提供的开发框架、存储引擎和构建工具；第三方组件的版权与许可声明以各自项目发布内容为准。
+感谢 Qt、SQLite、CMake 等项目及其维护者提供的开发框架、存储引擎和构建工具。
